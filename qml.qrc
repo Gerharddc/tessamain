@@ -1,0 +1,46 @@
+<RCC>
+    <qresource prefix="/">
+        <file>GL/filament.fsh</file>
+        <file>GL/filament.vsh</file>
+        <file>GL/line.vsh</file>
+        <file>GL/mesh.vsh</file>
+        <file>GL/minimal.fsh</file>
+        <file>Bottom/BottomDrawer.qml</file>
+        <file>Bottom/BottomPage.qml</file>
+        <file>Bottom/BottomTab.qml</file>
+        <file>Bottom/ModelPage.qml</file>
+        <file>Bottom/PrintPage.qml</file>
+        <file>Bottom/SlicePage.qml</file>
+        <file>Controls/Archive.png</file>
+        <file>Controls/Button.qml</file>
+        <file>Controls/DimmableControl.qml</file>
+        <file>Controls/DropTextBox.qml</file>
+        <file>Controls/FileBrowser.qml</file>
+        <file>Controls/Folder.png</file>
+        <file>Controls/Label.qml</file>
+        <file>Controls/ProgressBar.qml</file>
+        <file>Controls/SD.png</file>
+        <file>Controls/Slider.qml</file>
+        <file>Controls/STL.png</file>
+        <file>Controls/TextBox.qml</file>
+        <file>Controls/Toggle.qml</file>
+        <file>Controls/Up.png</file>
+        <file>Controls/USB.png</file>
+        <file>Images/Chevron Down-50.png</file>
+        <file>Keyboard/Backspace Key.png</file>
+        <file>Keyboard/Close Key.png</file>
+        <file>Keyboard/Enter Key.png</file>
+        <file>Keyboard/Keyboard.qml</file>
+        <file>Keyboard/KeyboardButton.qml</file>
+        <file>Keyboard/Left Key.png</file>
+        <file>Keyboard/Right Key.png</file>
+        <file>Keyboard/Shift Key.png</file>
+        <file>MainScreen.qml</file>
+        <file>DimmLogic.js</file>
+        <file>nevis.ttf</file>
+        <file>Rotated.qml</file>
+        <file>StyleSheet.js</file>
+        <file>StyleSheet.qml</file>
+        <file>TopDrawer.qml</file>
+    </qresource>
+</RCC>

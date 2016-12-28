@@ -1,0 +1,7 @@
+[submodule "glm"]
+	path = glm
+	url = https://github.com/g-truc/glm.git
+[submodule "glm-repo"]
+	path = glm-repo
+	url = https://github.com/g-truc/glm.git
+	branch = 0.9.8
