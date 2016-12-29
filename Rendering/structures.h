@@ -168,11 +168,11 @@ struct Layer
     std::vector<Island> islands;
 };
 
-class Toolpath;
+class RenderTP;
 
 class TPDataChunk
 {
-    friend class Toolpath;
+    friend class RenderTP;
 
 private:
     bool indicesCopied = false;
@@ -203,7 +203,7 @@ public:
     ~TPDataChunk();
 };
 
-struct Toolpath
+struct RenderTP
 {
     std::vector<Layer> layers;
     std::vector<TPDataChunk> *CalculateDataChunks();

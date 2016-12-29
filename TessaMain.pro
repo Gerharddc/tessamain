@@ -21,7 +21,8 @@ SOURCES += main.cpp \
     Rendering/structures.cpp \
     Rendering/toolpathrendering.cpp \
     Keyboard/keyboard.cpp \
-    Printer/printer.cpp
+    Printer/printer.cpp \
+    ChopperEngine/toolpath.cpp
 
 RESOURCES += qml.qrc
 
@@ -55,6 +56,7 @@ HEADERS += \
     Rendering/toolpathrendering.h \
     Keyboard/keyboard.h \
     Printer/gcode.h \
-    Printer/printer.h
+    Printer/printer.h \
+    ChopperEngine/toolpath.h
 
 DEFINES += QT_APPLICATION

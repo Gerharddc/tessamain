@@ -20,9 +20,9 @@ inline void ShrinkIsle(Island *isle)
     }
 }
 
-Toolpath* GCodeImporting::ImportGCode(const char *path)
+RenderTP* GCodeImporting::ImportGCode(const char *path)
 {
-    std::ifstream is(path);
+    /*std::ifstream is(path);
 
     Toolpath *tp = new Toolpath();
 
@@ -323,5 +323,5 @@ Toolpath* GCodeImporting::ImportGCode(const char *path)
         }
     }
 
-    return tp;
+    return tp;*/
 }

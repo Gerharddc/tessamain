@@ -13,7 +13,7 @@ namespace ToolpathRendering {
     void FreeMemory();
     void Draw();
     void Init();
-    void SetToolpath(Toolpath *tp);\
+    void SetToolpath(RenderTP *tp);\
     void ProjMatDirty();
     void SceneMatDirty();
     void SetOpacity(float alpha);

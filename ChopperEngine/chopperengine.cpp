@@ -2,6 +2,8 @@
 #include "Misc/globalsettings.h"
 #include "clipper.hpp"
 #include "pmvector.h"
+#include "Rendering/structures.h"
+#include "toolpath.h"
 #include <iostream>
 #include <vector>
 #include <map>
@@ -19,15 +21,9 @@
 using namespace ChopperEngine;
 using namespace ClipperLib;
 
-std::size_t ChopperEngine::layerCount = 0;
-Mesh* ChopperEngine::sliceMesh = nullptr;
+/*std::size_t ChopperEngine::layerCount = 0;
+Mesh* ChopperEngine::sliceMesh = nullptr;*/
 static LogDelegate slicerLogger = nullptr;
-
-// Scale double to ints with this factor
-static double scaleFactor = 1000000.0;
-const double PI = 3.14159265358979323846;
-const float NozzleWidth = 0.5f;
-const float FilamentWidth = 2.8f;
 
 // Below are some test that output GCode allowing for visual tests
 // Uncomment to test if initial lines are calculated properly
@@ -65,198 +61,6 @@ void ChopperEngine::SlicerLog(std::string message)
     std::cout << message << std::endl;
 }
 
-struct TrigLineSegment
-{
-    // This is a linesegment that is linked to a triangle face
-
-    IntPoint p1, p2;
-    bool usedInPolygon = false;
-    std::size_t trigIdx;
-
-    TrigLineSegment(const IntPoint &_p1, const IntPoint &_p2, std::size_t _trigIdx) :
-        p1(_p1), p2(_p2), trigIdx(_trigIdx) {}
-
-    void SwapPoints()
-    {
-        IntPoint temp = p1;
-        p1 = p2;
-        p2 = temp;
-    }
-};
-
-struct LineSegment
-{
-    IntPoint p1, p2;
-
-    LineSegment(const IntPoint &_p1, const IntPoint &_p2) :
-        p1(_p1), p2(_p2) {}
-
-    void SwapPoints()
-    {
-        IntPoint temp = p1;
-        p1 = p2;
-        p2 = temp;
-    }
-};
-
-typedef std::vector<LineSegment> LineList;
-
-enum class ToolSegType
-{
-    Retraction,
-    Travel,
-    Extruded
-};
-
-struct ToolSegment
-{
-    ToolSegType type;
-
-    ToolSegment(ToolSegType _type)
-        : type(_type) {}
-
-    virtual ~ToolSegment() {}
-};
-
-struct RetractSegment : public ToolSegment
-{
-    cInt distance;
-
-    RetractSegment(cInt dist)
-        : ToolSegment(ToolSegType::Retraction), distance(dist) {}
-};
-
-struct IntPoint3
-{
-    cInt X, Y, Z;
-
-    IntPoint3(cInt x, cInt y, cInt z) :
-        X(x), Y(y), Z(z) {}
-
-    IntPoint3(const IntPoint &ip, cInt z) :
-        X(ip.X), Y(ip.Y), Z(z) {}
-
-    bool operator ==(const IntPoint3 &b)
-    {
-        return (X == b.X) && (Y == b.Y) && (Z == b.Z);
-    }
-};
-
-struct MovingSegment : public ToolSegment
-{
-    IntPoint3 p1, p2;
-    int speed;
-
-    MovingSegment(ToolSegType _type, const IntPoint3& _p1, const IntPoint3& _p2, const int _speed)
-        : ToolSegment(_type), p1(_p1), p2(_p2), speed(_speed) {}
-
-    MovingSegment(ToolSegType _type, const IntPoint& _p1, const IntPoint& _p2, cInt Z, const int _speed)
-        : ToolSegment(_type), p1(_p1, Z), p2(_p2, Z), speed(_speed) {}
-
-    cInt MoveDistance()
-    {
-        return (cInt)(std::sqrt(std::pow((long)p2.X - (long)p1.X, 2) +
-                         std::pow((long)p2.Y - (long)p1.Y, 2) + std::pow((long)p2.Z - (long)p1.Z, 2)));
-    }
-
-    void SetStartPoint(IntPoint p)
-    {
-        p1.X = p.X;
-        p1.Y = p.Y;
-    }
-};
-
-struct TravelSegment : public MovingSegment
-{
-    TravelSegment(const IntPoint3& _p1, const IntPoint3& _p2, const int _speed)
-        : MovingSegment(ToolSegType::Travel, _p1, _p2, _speed) {}
-
-    TravelSegment(const IntPoint& _p1, const IntPoint& _p2, cInt Z, const int _speed)
-        : MovingSegment(ToolSegType::Travel, _p1, _p2, Z, _speed) {}
-
-    TravelSegment(const IntPoint& P, cInt Z1, cInt Z2, const int _speed)
-        : MovingSegment(ToolSegType::Travel, IntPoint3(P, Z1), IntPoint3(P, Z2), _speed) {}
-};
-
-struct ExtrudeSegment : public MovingSegment
-{
-    ExtrudeSegment(const IntPoint3& _p1, const IntPoint3& _p2, const int _speed)
-        : MovingSegment(ToolSegType::Extruded, _p1, _p2, _speed) {}
-
-    ExtrudeSegment(const IntPoint& _p1, const IntPoint& _p2, cInt Z, const int _speed)
-        : MovingSegment(ToolSegType::Extruded, _p1, _p2, Z, _speed) {}
-
-    ExtrudeSegment(const LineSegment& line, cInt Z, const int _speed)
-        : MovingSegment(ToolSegType::Extruded, IntPoint3(line.p1, Z), IntPoint3(line.p2, Z), _speed) {}
-
-    double ExtrusionDistance()
-    {
-        if (GlobalSettings::LayerHeight.Get() == 0)
-            return 0;
-
-        // First we need to calculate the volume of the segment
-        double volume = (MoveDistance() / scaleFactor) * GlobalSettings::LayerHeight.Get() / NozzleWidth;
-
-        // We then need to calculate how much smaller the extrusion is from the filament so that
-        // we know how much filament to use to get the desired amount of extrusion
-        double filamentToTip =  FilamentWidth / NozzleWidth;
-
-        // We can then return the amount of filament needed for the extrusion of the move
-        return volume / filamentToTip / 5; //Not sure why the 5 is needed
-        // TODO: the above is not 100% correct
-    }
-};
-
-enum class SegmentType
-{
-    OutlineSegment,
-    InfillSegment,
-    TopSegment,
-    BottomSegment,
-    SupportSegment,
-    SkirtSegment,
-    RaftSegment
-};
-
-struct LayerSegment
-{
-    Paths outlinePaths;
-    SegmentType type;
-    int segmentSpeed;
-    PMCollection<ToolSegment> toolSegments;
-
-    LayerSegment(SegmentType _type) :
-        type(_type) {}
-
-    virtual ~LayerSegment() {}
-};
-
-struct SegmentWithInfill : public LayerSegment
-{
-    float infillMultiplier = 1.0f;
-    float fillDensity = 1.0;
-    std::vector<LineSegment> fillLines;
-
-    SegmentWithInfill(SegmentType _type) :
-        LayerSegment(_type) {}
-};
-
-struct LayerIsland
-{
-    Paths outlinePaths;
-    PMCollection<LayerSegment> segments;
-};
-
-struct LayerComponent
-{
-    std::vector<TrigLineSegment> initialLineList;
-    std::map<std::size_t, std::size_t> faceToLineIdxs;
-    std::vector<LayerIsland> islandList;
-    int layerSpeed = 100; // TODO
-    int moveSpeed = 100; // TODO
-    std::vector<TravelSegment> initialLayerMoves;
-};
-
 struct InfillGrid
 {
     Paths leftList, rightList;
@@ -264,37 +68,37 @@ struct InfillGrid
 
 static std::map<float, InfillGrid> InfillGridMap;
 
-static inline void getTrigPointFloats(Triangle &trig, double *arr, uint8_t pnt)
+static inline void getTrigPointFloats(Triangle &trig, double *arr, uint8_t pnt, MeshInfoPtr mip)
 {
-    arr[0] = (double)sliceMesh->vertexFloats[trig.vertIdxs[0] * 3 + pnt];
-    arr[1] = (double)sliceMesh->vertexFloats[trig.vertIdxs[1] * 3 + pnt];
-    arr[2] = (double)sliceMesh->vertexFloats[trig.vertIdxs[2] * 3 + pnt];
+    arr[0] = (double)mip->sliceMesh->vertexFloats[trig.vertIdxs[0] * 3 + pnt];
+    arr[1] = (double)mip->sliceMesh->vertexFloats[trig.vertIdxs[1] * 3 + pnt];
+    arr[2] = (double)mip->sliceMesh->vertexFloats[trig.vertIdxs[2] * 3 + pnt];
 }
 
-static LayerComponent* layerComponents = nullptr;
+//static LayerComponent* layerComponents = nullptr;
 
-static inline Vertex &VertAtIdx(std::size_t idx)
+static inline Vertex &VertAtIdx(std::size_t idx, MeshInfoPtr mip)
 {
-    if (idx > sliceMesh->vertexCount)
+    if (idx > mip->sliceMesh->vertexCount)
     {
         std::cout << "Vertex: " << std::to_string(idx) << " not in "
-                  << std::to_string(sliceMesh->vertexCount) << std::endl;
+                  << std::to_string(mip->sliceMesh->vertexCount) << std::endl;
         throw std::runtime_error("Vertex idx too large.");
     }
 
-    return sliceMesh->vertices[idx];
+    return mip->sliceMesh->vertices[idx];
 }
 
-static inline Triangle &TrigAtIdx(std::size_t idx)
+static inline Triangle &TrigAtIdx(std::size_t idx, MeshInfoPtr mip)
 {
-    if (idx > sliceMesh->trigCount)
+    if (idx > mip->sliceMesh->trigCount)
     {
         std::cout << "Trig: " << std::to_string(idx) << " not in "
-                  << std::to_string(sliceMesh->trigCount) << std::endl;
+                  << std::to_string(mip->sliceMesh->trigCount) << std::endl;
         throw std::runtime_error("Trig idx too large.");
     }
 
-    return sliceMesh->trigs[idx];
+    return mip->sliceMesh->trigs[idx];
 }
 
 
@@ -304,9 +108,9 @@ static inline Triangle &TrigAtIdx(std::size_t idx)
 // is reasonable and only returns when all have finished
 // The functions need to run on data between two indices
 // and toggle a flag when done
-typedef void(*MultiFunction)(std::size_t, std::size_t, bool*);
+typedef void(*MultiFunction)(std::size_t, std::size_t, bool*, MeshInfoPtr);
 static void MultiRunFunction(MultiFunction function,
-                             std::size_t startIdx, std::size_t endIdx)
+                             std::size_t startIdx, std::size_t endIdx, MeshInfoPtr mip)
 {
     cInt idsLeft = endIdx - startIdx + 1;
     std::size_t lastIdx = 0;
@@ -331,7 +135,7 @@ static void MultiRunFunction(MultiFunction function,
     while (idsLeft > 0 && threadCount < cores)
     {
         threads[threadCount] = std::thread(function, lastIdx, std::min(endIdx, lastIdx + blockSize),
-                                           &(doneFlags[threadCount]));
+                                           &(doneFlags[threadCount]), mip);
         lastIdx += blockSize;
         idsLeft -= blockSize;
         threadCount++;
@@ -362,7 +166,7 @@ static void MultiRunFunction(MultiFunction function,
                     threads[i].join();
 
                     threads[i] = std::thread(function, lastIdx, std::min(endIdx, lastIdx + blockSize),
-                                             &(doneFlags[threadCount]));
+                                             &(doneFlags[threadCount]), mip);
                     lastIdx += blockSize;
                     idsLeft -= blockSize;
                     threadCount++;
@@ -392,23 +196,23 @@ static void MultiRunFunction(MultiFunction function,
         threads[i].join();
 }
 
-static void SliceTrigsToLayersMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag)
+static void SliceTrigsToLayersMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
 {
     SlicerLog(std::string("Slicing trigs: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
     for (std::size_t i = startIdx; i < endIdx; i++)
     {
         double zPoint = (double)i * GlobalSettings::LayerHeight.Get();
-        std::vector<TrigLineSegment> &lineList = layerComponents[i].initialLineList;
+        std::vector<TrigLineSegment> &lineList = mip->layerComponents[i].initialLineList;
         lineList.reserve(50); // Maybe a nice amount?
 
-        for (std::size_t j = 0; j < sliceMesh->trigCount; j++)
+        for (std::size_t j = 0; j < mip->sliceMesh->trigCount; j++)
         {
-            Triangle &trig = sliceMesh->trigs[j];
+            Triangle &trig = mip->sliceMesh->trigs[j];
 
             // Check if the triangle contains the current layer's z
             double z[3];
-            getTrigPointFloats(trig, z, 2);
+            getTrigPointFloats(trig, z, 2, mip);
             double minZ = std::min(z[0], std::min(z[1], z[2]));
             double maxZ = std::max(z[0], std::max(z[1], z[2]));
             if (minZ != maxZ && zPoint <= maxZ && zPoint >= minZ)
@@ -479,8 +283,8 @@ static void SliceTrigsToLayersMF(std::size_t startIdx, std::size_t endIdx, bool*
                 }
 
                 double x[3], y[3];
-                getTrigPointFloats(trig, x, 0);
-                getTrigPointFloats(trig, y, 1);
+                getTrigPointFloats(trig, x, 0, mip);
+                getTrigPointFloats(trig, y, 1, mip);
 
                 // First calculate the relationship of z to x on the one side of the triangle
                 double zToX1 = (z[a] != z[b]) ? ((x[a] - x[b]) / (z[a] - z[b])) : 0;
@@ -505,7 +309,7 @@ static void SliceTrigsToLayersMF(std::size_t startIdx, std::size_t endIdx, bool*
                 if (p1 != p2)
                 {
                     // Add the line and keep of track of which face it relates to
-                    layerComponents[i].faceToLineIdxs.insert(std::make_pair(j, lineList.size()));
+                    mip->layerComponents[i].faceToLineIdxs.insert(std::make_pair(j, lineList.size()));
                     lineList.push_back(TrigLineSegment(p1, p2, j));
                 }
             }
@@ -515,11 +319,11 @@ static void SliceTrigsToLayersMF(std::size_t startIdx, std::size_t endIdx, bool*
     *doneFlag = true;
 }
 
-static inline void SliceTrigsToLayers()
+static inline void SliceTrigsToLayers(MeshInfoPtr mip)
 {
     SlicerLog("Slicing triangles into layers");
 
-    MultiRunFunction(SliceTrigsToLayersMF, 0, layerCount);
+    MultiRunFunction(SliceTrigsToLayersMF, 0, mip->layerCount, mip);
 }
 
 static inline long SquaredDist(const IntPoint& p1, const IntPoint& p2)
@@ -547,17 +351,17 @@ static void ProcessPolyNode(PolyNode *pNode, std::vector<LayerIsland> &isleList)
 }
 
 #ifdef TEST_INITIAL_LINES
-static inline void ToolpathLines()
+static inline void ToolpathLines(MeshInfoPtr mip)
 {
     SlicerLog("Calculating toolpath from initial lines");
 
     IntPoint lastPoint(0, 0);
     cInt lastZ = 0;
 
-    for (std::size_t i = 0; i < layerCount; i++)
+    for (std::size_t i = 0; i < mip->layerCount; i++)
     {
         SlicerLog("Line toolpath: " + std::to_string(i));
-        LayerComponent &curLayer = layerComponents[i];
+        LayerComponent &curLayer = mip->layerComponents[i];
 
         std::vector<TrigLineSegment> &lineList = curLayer.initialLineList;
 
@@ -682,7 +486,7 @@ static inline void OptimizePaths(Paths& paths)
     }
 }
 
-static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag)
+static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
 {
     SlicerLog(std::string("Calculating islands: ") + std::to_string(startIdx)
               + std::string(" to ") + std::to_string(endIdx));
@@ -690,7 +494,7 @@ static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t
     for (std::size_t i = startIdx; i < endIdx; i++)
     {
         SlicerLog("Calculating islands for layer: " + std::to_string(i));
-        LayerComponent &layerComp = layerComponents[i];
+        LayerComponent &layerComp = mip->layerComponents[i];
         std::vector<TrigLineSegment> &lineList = layerComp.initialLineList;
 
         if (lineList.size() < 2)
@@ -720,12 +524,12 @@ static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t
             while (open)
             {
                 bool connected = false;
-                const Triangle &trigToConnectFrom = TrigAtIdx(lineList[lineIdxToConnectFrom].trigIdx);
+                const Triangle &trigToConnectFrom = TrigAtIdx(lineList[lineIdxToConnectFrom].trigIdx, mip);
 
                 // Go through all three vertices on the triangle
                 for (uint8_t j = 0; j < 3; j++)
                 {
-                    const Vertex &v = VertAtIdx(trigToConnectFrom.vertIdxs[j]);
+                    const Vertex &v = VertAtIdx(trigToConnectFrom.vertIdxs[j], mip);
 
                     // Test against all triangles that share a vertex for a line connection
                     for (std::size_t touchIdx : v.trigIdxs)
@@ -939,14 +743,14 @@ static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t
     *doneFlag = true;
 }
 
-static inline void CalculateIslandsFromInitialLines()
+static inline void CalculateIslandsFromInitialLines(MeshInfoPtr mip)
 {
     SlicerLog("Calculating initial islands");
 
-    MultiRunFunction(CalculateIslandsFromInitialLinesMF, 0, layerCount);
+    MultiRunFunction(CalculateIslandsFromInitialLinesMF, 0, mip->layerCount, mip);
 }
 
-static void GenerateOutlineSegmentsMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag)
+static void GenerateOutlineSegmentsMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
 {
     SlicerLog(std::string("Outline: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -954,7 +758,7 @@ static void GenerateOutlineSegmentsMF(std::size_t startIdx, std::size_t endIdx, 
 
     for (std::size_t i = startIdx; i < endIdx; i++)
     {
-        LayerComponent &layerComp = layerComponents[i];
+        LayerComponent &layerComp = mip->layerComponents[i];
 
         SlicerLog("Outline: " + std::to_string(i));
 
@@ -997,7 +801,7 @@ static void GenerateOutlineSegmentsMF(std::size_t startIdx, std::size_t endIdx, 
     *doneFlag = true;
 }
 
-static inline void GenerateOutlineSegments()
+static inline void GenerateOutlineSegments(MeshInfoPtr mip)
 {
     SlicerLog("Generating outline segments");
 
@@ -1005,17 +809,17 @@ static inline void GenerateOutlineSegments()
     if (GlobalSettings::ShellThickness.Get() < 1)
         return;
 
-    MultiRunFunction(GenerateOutlineSegmentsMF, 0, layerCount);
+    MultiRunFunction(GenerateOutlineSegmentsMF, 0, mip->layerCount, mip);
 }
 
 #ifdef TEST_ISLAND_DETECTION
-static inline void GenerateOutlineBasic()
+static inline void GenerateOutlineBasic(MeshInfoPtr mip)
 {
     SlicerLog("Generating outline basic");
 
-    for (std::size_t i = 0; i < layerCount; i++)
+    for (std::size_t i = 0; i < mip->layerCount; i++)
     {
-        LayerComponent &layerComp = layerComponents[i];
+        LayerComponent &layerComp = mip->layerComponents[i];
 
         SlicerLog("Basic outline: " + std::to_string(i));
 
@@ -1034,7 +838,7 @@ static inline void GenerateOutlineBasic()
 std::unordered_map<float, cInt> densityDividers;
 
 static void CalculateDensityDivider(float density)
-{
+{   
     // Calculate the needed spacing
 
     // d% = 1 / (x% + 1)
@@ -1061,7 +865,7 @@ static inline void CalculateDensityDividers()
 #endif
 
 #ifdef FAILSAFE_INFILL
-static inline void GenerateInfillGrid(float density, float angle = 45.0f / 180.0f * PI)
+static inline void GenerateInfillGrid(float density, float angle = 45.0f / 180.0f * PI, MeshInfoPtr mip)
 {
     // TODO: get blank constructor working
     InfillGridMap.emplace(std::make_pair(density, InfillGrid()));
@@ -1087,10 +891,10 @@ static inline void GenerateInfillGrid(float density, float angle = 45.0f / 180.0
     // 2 points of linesegment
     IntPoint p1, p2;
 
-    float MaxY = sliceMesh->MaxVec.y;
-    float MinY = sliceMesh->MinVec.y;
-    float MinX = sliceMesh->MinVec.x;
-    float MaxX = sliceMesh->MaxVec.x;
+    float MaxY = mip->sliceMesh->MaxVec.y;
+    float MinY = mip->sliceMesh->MinVec.y;
+    float MinX = mip->sliceMesh->MinVec.x;
+    float MaxX = mip->sliceMesh->MaxVec.x;
 
     // We need to start creating diagonal lines before
     // the min x sothat there are lines over every part of the model
@@ -1146,7 +950,7 @@ static inline void GenerateInfillGrids()
 }
 #endif
 
-static inline void CalculateTopBottomSegments()
+static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
 {
     SlicerLog("Calculating top and bottom segments");
 
@@ -1173,19 +977,19 @@ static inline void CalculateTopBottomSegments()
 
         if (tBCount > 0) // TODO: top
         {
-            for (std::size_t i = 1; i < layerCount - tBCount; i++)
+            for (std::size_t i = 1; i < mip->layerCount - tBCount; i++)
             {
                 SlicerLog("Top: " + std::to_string(i));
 
                 //First we need to calculate the intersection of the top few layers above it
                 Paths aboveIntersection;
 
-                for (std::size_t j = i + 1; j < std::min(i + tBCount + 1, layerCount); j++)
+                for (std::size_t j = i + 1; j < std::min(i + tBCount + 1, mip->layerCount); j++)
                 {
                     Paths combinedIsles;
 
                     // Combine the outlines of the islands into one
-                    for (LayerIsland &isle : layerComponents[j].islandList)
+                    for (LayerIsland &isle : mip->layerComponents[j].islandList)
                     {
                         clipper.Clear();
                         clipper.AddPaths(combinedIsles, PolyType::ptClip, true);
@@ -1211,7 +1015,7 @@ static inline void CalculateTopBottomSegments()
                 offset.AddPaths(aboveIntersection, JoinType::jtMiter, EndType::etClosedPolygon);
                 offset.Execute(aboveIntersection, partNozzle);
 
-                for (LayerIsland &isle : layerComponents[i].islandList)
+                for (LayerIsland &isle : mip->layerComponents[i].islandList)
                 {
                     SegmentWithInfill &topSegment = isle.segments.emplace<SegmentWithInfill>(SegmentType::TopSegment);
                     clipper.Clear();
@@ -1232,11 +1036,11 @@ static inline void CalculateTopBottomSegments()
                 }
             }
 
-            for (std::size_t i = layerCount - 1; i > layerCount - tBCount - 1; i--)
+            for (std::size_t i = mip->layerCount - 1; i > mip->layerCount - tBCount - 1; i--)
             {
                 SlicerLog("Top: " + std::to_string(i));
 
-                for (LayerIsland &isle : layerComponents[i].islandList)
+                for (LayerIsland &isle : mip->layerComponents[i].islandList)
                 {
                     SegmentWithInfill &topSegment = isle.segments.emplace<SegmentWithInfill>(SegmentType::TopSegment);
                     topSegment.outlinePaths = isle.outlinePaths;
@@ -1263,7 +1067,7 @@ static inline void CalculateTopBottomSegments()
 
         if (tBCount > 0) // TODO: bottom
         {
-            for (std::size_t i = layerCount - 2; i > tBCount - 1; i--)
+            for (std::size_t i = mip->layerCount - 2; i > tBCount - 1; i--)
             {
                 if (i < 1)
                     continue;
@@ -1278,7 +1082,7 @@ static inline void CalculateTopBottomSegments()
                     Paths combinedIsles;
 
                     // Combine the outlines of the islands into one
-                    for (LayerIsland &isle : layerComponents[j].islandList)
+                    for (LayerIsland &isle : mip->layerComponents[j].islandList)
                     {
                         clipper.Clear();
                         clipper.AddPaths(combinedIsles, PolyType::ptClip, true);
@@ -1304,7 +1108,7 @@ static inline void CalculateTopBottomSegments()
                 offset.AddPaths(belowIntersection, JoinType::jtMiter, EndType::etClosedPolygon);
                 offset.Execute(belowIntersection, partNozzle);
 
-                for (LayerIsland &isle : layerComponents[i].islandList)
+                for (LayerIsland &isle : mip->layerComponents[i].islandList)
                 {
                     SegmentWithInfill &bottomSegment = isle.segments.emplace<SegmentWithInfill>(SegmentType::BottomSegment);
                     clipper.Clear();
@@ -1330,7 +1134,7 @@ static inline void CalculateTopBottomSegments()
             {
                 SlicerLog("Bottom: " + std::to_string(i));
 
-                for (LayerIsland &isle : layerComponents[i].islandList)
+                for (LayerIsland &isle : mip->layerComponents[i].islandList)
                 {
                     SegmentWithInfill &bottomSegment = isle.segments.emplace<SegmentWithInfill>(SegmentType::BottomSegment);
                     bottomSegment.outlinePaths = isle.outlinePaths;
@@ -1346,7 +1150,7 @@ static inline void CalculateTopBottomSegments()
     bottomThread.join();
 }
 
-static void CalculateInfillSegmentsMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag)
+static void CalculateInfillSegmentsMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
 {
     SlicerLog(std::string("Infill: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -1359,7 +1163,7 @@ static void CalculateInfillSegmentsMF(std::size_t startIdx, std::size_t endIdx, 
     {
         SlicerLog("Infill: " + std::to_string(i));
 
-        for (LayerIsland &isle : layerComponents[i].islandList)
+        for (LayerIsland &isle : mip->layerComponents[i].islandList)
         {
             clipper.Clear();
 
@@ -1388,20 +1192,20 @@ static void CalculateInfillSegmentsMF(std::size_t startIdx, std::size_t endIdx, 
     *doneFlag = true;
 }
 
-static inline void CalculateInfillSegments()
+static inline void CalculateInfillSegments(MeshInfoPtr mip)
 {
     SlicerLog("Calculating infill segments");
 
-    MultiRunFunction(CalculateInfillSegmentsMF, 0, layerCount);
+    MultiRunFunction(CalculateInfillSegmentsMF, 0, mip->layerCount, mip);
 }
 
-static inline void CalculateSupportSegments()
+static inline void CalculateSupportSegments(MeshInfoPtr mip)
 {
     // TODO: implement this
 }
 
 #ifdef COMBINE_INFILL
-static inline void CombineInfillSegments()
+static inline void CombineInfillSegments(MeshInfoPtr mip)
 {
     SlicerLog("Combining infill segments");
 
@@ -1418,12 +1222,12 @@ static inline void CombineInfillSegments()
 
     Clipper clipper;
 
-    for (std::size_t i = layerCount - 1; i > 0; i -= combCount)
+    for (std::size_t i = mip->layerCount - 1; i > 0; i -= combCount)
     {
         Paths belowInfill;
 
         //This will indicate how many layers have been combined
-        short combinedLayerCount = 1;
+        short combinedmip->layerCount = 1;
 
         // Then figure out to what extent it intersects with the layers below
         for (std::size_t j = i - 1; j > i - combCount && j > 0; j--)
@@ -1431,7 +1235,7 @@ static inline void CombineInfillSegments()
             // Fist combine all the infill segments for the layer
             Paths combinedInfill;
 
-            for (LayerIsland &isle : layerComponents[i].islandList)
+            for (LayerIsland &isle : mip->layerComponents[i].islandList)
             {
                 for (LayerSegment *seg : isle.segments)
                 {
@@ -1456,10 +1260,10 @@ static inline void CombineInfillSegments()
             else
                 belowInfill = combinedInfill;
 
-            combinedLayerCount++;
+            combinedmip->layerCount++;
         }
 
-        for (LayerIsland &mainIsle : layerComponents[i].islandList)
+        for (LayerIsland &mainIsle : mip->layerComponents[i].islandList)
         {
             Paths commonInfill;
 
@@ -1489,7 +1293,7 @@ static inline void CombineInfillSegments()
 
             for (std::size_t j = i; j > i - combCount && j > 0; j--)
             {
-                for (LayerIsland &isle : layerComponents[j].islandList)
+                for (LayerIsland &isle : mip->layerComponents[j].islandList)
                 {
                     for (LayerSegment *seg : isle.segments)
                     {
@@ -1518,13 +1322,13 @@ static inline void CombineInfillSegments()
 }
 #endif
 
-static inline void GenerateRaft()
+static inline void GenerateRaft(MeshInfoPtr mip)
 {
     // TODO: implement this
     SlicerLog("Generating raft");
 }
 
-static inline void GenerateSkirt()
+static inline void GenerateSkirt(MeshInfoPtr mip)
 {
     //  TODO: implement this
     SlicerLog("Generating skirt");
@@ -1782,7 +1586,7 @@ static inline void ClipLinesToPaths(std::vector<LineSegment> &lines, const Paths
 }
 #endif
 
-static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag)
+static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
 {
     SlicerLog(std::string("Trim infill: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -1793,7 +1597,7 @@ static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFla
     {
         SlicerLog("Trim infill: " + std::to_string(i));
 
-        for (LayerIsland &isle : layerComponents[i].islandList)
+        for (LayerIsland &isle : mip->layerComponents[i].islandList)
         {
             for (LayerSegment *segment : isle.segments)
             {
@@ -1840,23 +1644,14 @@ static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFla
     *doneFlag = true;
 }
 
-static inline void TrimInfill()
+static inline void TrimInfill(MeshInfoPtr mip)
 {
     SlicerLog("Trimming infill");
 
-    MultiRunFunction(TrimInfillMF, 0, layerCount);
+    MultiRunFunction(TrimInfillMF, 0, mip->layerCount, mip);
 }
 
 const cInt MoveHigher = scaleFactor / 10;
-
-/*static bool Colinear(const IntPoint &p1, const IntPoint &p2, const IntPoint &p3)
-{
-    // (y3 - y1)/(x3 - x1) should = (y2 - y1)/(x2 - x1)
-    // so without division and need for conversion to floats
-    // (y3 - y1)*(x2 - x1) should = (y2 - y1)*(x3 - x1)
-
-    return (p3.Y - p1.Y)*(p2.X - p1.X) == (p2.Y - p1.Y)*(p3.X - p1.X);
-}*/
 
 static void AddRetractedMove(PMCollection<ToolSegment> &toolSegments,
                             const IntPoint &p1,const IntPoint &p2,
@@ -2127,7 +1922,7 @@ static void ExtrudeLine(const std::size_t lineIdx, IntPoint &lastPoint, const cI
 
 static IntPoint *LayerLastPoints;
 
-static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag)
+static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
 {
     SlicerLog(std::string("Toolpath: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -2137,7 +1932,7 @@ static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* 
     for (std::size_t i = startIdx; i < endIdx; i++)
     {
         SlicerLog("Toolpath: " + std::to_string(i));
-        LayerComponent &curLayer = layerComponents[i];
+        LayerComponent &curLayer = mip->layerComponents[i];
 
         // Move to the new z position
         // We need half a layerheight for the filament
@@ -2339,19 +2134,19 @@ static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* 
     *doneFlag = true;
 }
 
-static inline void CalculateToolpath()
+static inline void CalculateToolpath(MeshInfoPtr mip)
 {
     SlicerLog("Calculating toolpath");
 
-    LayerLastPoints = new IntPoint[layerCount];
+    LayerLastPoints = new IntPoint[mip->layerCount];
 
-    MultiRunFunction(CalculateToolpathMF, 0, layerCount);
+    MultiRunFunction(CalculateToolpathMF, 0, mip->layerCount, mip);
 
     // Adjust the starting position of each layer to the end of the last one
-    for (std::size_t i = 1; i < layerCount; i++)
+    for (std::size_t i = 1; i < mip->layerCount; i++)
     {
-        if (layerComponents[i].initialLayerMoves.size() > 0)
-            layerComponents[i].initialLayerMoves[0].SetStartPoint(LayerLastPoints[i - 1]);
+        if (mip->layerComponents[i].initialLayerMoves.size() > 0)
+            mip->layerComponents[i].initialLayerMoves[0].SetStartPoint(LayerLastPoints[i - 1]);
     }
 
     delete[] LayerLastPoints;
@@ -2360,17 +2155,17 @@ static inline void CalculateToolpath()
 #if defined(TEST_ISLAND_DETECTION) || defined(TEST_OUTLINE_GENERATION)
 // This is a test method used to calculate a horible toolpath that only renders correct
 // as to evaluate other parts of the process for correctness.
-static inline void CalculateBasicToolpath()
+static inline void CalculateBasicToolpath(MeshInfoPtr mip)
 {
     SlicerLog("Calculating basic toolpath");
 
     IntPoint lastPoint(0, 0);
     cInt lastZ = 0;
 
-    for (std::size_t i = 0; i < layerCount; i++)
+    for (std::size_t i = 0; i < mip->layerCount; i++)
     {
         SlicerLog("Basic toolpath: " + std::to_string(i));
-        LayerComponent &curLayer = layerComponents[i];
+        LayerComponent &curLayer = mip->layerComponents[i];
 
         // Move to the new z position
         // We need half a layerheight for the filament
@@ -2414,7 +2209,7 @@ static inline void CalculateBasicToolpath()
 }
 #endif
 
-static inline void StoreGCode(std::string outFilePath)
+void ChopperEngine::WriteMeshGcode(std::string outFilePath, MeshInfoPtr mip)
 {
     //  TODO: implement this
     SlicerLog("Storing GCode");
@@ -2437,7 +2232,7 @@ static inline void StoreGCode(std::string outFilePath)
 
     os << std::fixed << std::setprecision(3);
 
-    os << ";Total amount of layer: " << layerCount << std::endl;
+    os << ";Total amount of layer: " << mip->layerCount << std::endl;
     os << ";Estimated time: " << 0 << std::endl; // TODO
     os << ";Estimated filament: " << 0 << std::endl; // TODO
     os << "G21" << std::endl;
@@ -2448,11 +2243,11 @@ static inline void StoreGCode(std::string outFilePath)
     os << "G92 E0" << std::endl;
     os << "G1 F600" << std::endl;
 
-    for (std::size_t layerNum = 0; layerNum < layerCount; layerNum++)
+    for (std::size_t layerNum = 0; layerNum < mip->layerCount; layerNum++)
     {
         SlicerLog("Writing: " + std::to_string(layerNum));
 
-        const LayerComponent &layer = layerComponents[layerNum];
+        const LayerComponent &layer = mip->layerComponents[layerNum];
         os << ";Layer: " << layerNum << std::endl;
 
         for (const TravelSegment &move : layer.initialLayerMoves)
@@ -2600,7 +2395,72 @@ static inline void StoreGCode(std::string outFilePath)
     os.close();
 }
 
-void ChopperEngine::SliceFile(Mesh *inputMesh, std::string outputFile)
+MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
+{
+    MeshInfoPtr mip = std::make_shared<MeshInfo>(inputMesh);
+
+    // Slice the triangles into layers
+    SliceTrigsToLayers(mip);
+
+#ifdef TEST_INITIAL_LINES
+    ToolpathLines(mip);
+#elif defined(TEST_ISLAND_DETECTION)
+    CalculateIslandsFromInitialLines(mip);
+    GenerateOutlineBasic(mip);
+    CalculateBasicToolpath(mip);
+#elif defined(TEST_OUTLINE_GENERATION)
+    CalculateIslandsFromInitialLines(mip);
+    GenerateOutlineSegments(mip);
+#ifdef TEST_OUTLINE_TOOLPATH
+    CalculateToolpath(mip);
+#else
+    CalculateBasicToolpath(mip);
+#endif
+#else
+    // Calculate islands from the original lines
+    CalculateIslandsFromInitialLines(mip);
+
+    // Generate the outline segments
+    GenerateOutlineSegments(mip);
+
+    // Generate the infill grids
+#ifdef FAILSAFE_INFILL
+    GenerateInfillGrids();
+#else
+    CalculateDensityDividers();
+#endif
+
+    // The top and bottom segments need to calculated before
+    // the infill outlines otherwise the infill will be seen as top or bottom
+    // Calculate the top and bottom segments
+    CalculateTopBottomSegments(mip);
+
+    // Calculate the infill segments
+    CalculateInfillSegments(mip);
+
+    // Calculate the support segments
+    CalculateSupportSegments(mip);
+
+#ifdef COMBINE_INFILL
+    // Combine the infill segments
+    CombineInfillSegments(mip);
+#endif
+
+    // Generate a raft
+    GenerateRaft(mip);
+
+    // Generate a skirt
+    GenerateSkirt(mip);
+
+    // Tim the infill grids to fit the segments
+    TrimInfill(mip);
+
+    // Calculate the toolpath
+    CalculateToolpath(mip);
+#endif
+}
+
+/*void ChopperEngine::SliceFile(Mesh *inputMesh, std::string outputFile)
 {
     sliceMesh = inputMesh;
 
@@ -2689,4 +2549,4 @@ void ChopperEngine::SliceFile(Mesh *inputMesh, std::string outputFile)
 
         free(layerComponents);
     }
-}
+}*/

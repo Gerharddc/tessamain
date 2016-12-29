@@ -39,7 +39,7 @@ static glm::quat sceneRot = glm::quat();
 static std::set<Mesh*> stlMeshes;
 static std::set<Mesh*> selectedMeshes;
 
-static Toolpath *gcodePath = nullptr;
+static RenderTP *gcodePath = nullptr;
 
 static bool curMeshesSaved = false;
 static std::string curMeshesPath = "";
@@ -215,7 +215,10 @@ std::string ComboRendering::SliceMeshes(std::string fileName)
 {
     //SaveMeshes(fileName);
     // TODO: implement slice
-    ChopperEngine::SliceFile(stlMeshes.begin().operator *(), fileName);
+    //ChopperEngine::SliceFile(stlMeshes.begin().operator *(), fileName);
+
+    auto mip = ChopperEngine::SliceMesh(stlMeshes.begin().operator *());
+    ChopperEngine::WriteMeshGcode(fileName, mip);
 
     return "";
 }
@@ -453,7 +456,7 @@ const glm::mat4 &ComboRendering::getSceneProj()
     return sceneProj;
 }
 
-const Toolpath *ComboRendering::getToolpath()
+const RenderTP *ComboRendering::getToolpath()
 {
     return gcodePath;
 }

@@ -104,7 +104,7 @@ void ToolpathRendering::FreeMemory()
         delete complexifyThread;
 }
 
-static Toolpath *path = nullptr;
+static RenderTP *path = nullptr;
 
 static void LoadPath()
 {
@@ -157,7 +157,7 @@ void ToolpathRendering::ProjMatDirty()
     dirtyProjMat = true;
 }
 
-void ToolpathRendering::SetToolpath(Toolpath *tp)
+void ToolpathRendering::SetToolpath(RenderTP *tp)
 {
     path = tp;
     dirtyPath = true;

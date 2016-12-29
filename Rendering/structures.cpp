@@ -166,7 +166,7 @@ static inline void NewChunk(ushort &idxPos, ushort &saveIdx, ushort &lineIdx, st
     dc = &(chunks->back());
 }
 
-std::vector<TPDataChunk>* Toolpath::CalculateDataChunks()
+std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
 {
     ushort idxPos = 0;
     ushort saveIdx = 0;

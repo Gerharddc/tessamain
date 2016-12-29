@@ -5,7 +5,7 @@
 
 namespace GCodeImporting {
 
-extern Toolpath* ImportGCode(const char* path);
+extern RenderTP* ImportGCode(const char* path);
 
 }
 
