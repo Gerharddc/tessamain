@@ -9,6 +9,9 @@
 #include <glm/glm.hpp>
 #include <list>
 
+#include "ChopperEngine/toolpath.h"
+#include "ChopperEngine/meshinfo.h" // TODO
+
 // The unit that defines the component of vectors
 typedef float veccomp;
 
@@ -134,7 +137,7 @@ struct Point2
     }
 };
 
-struct Point3
+/*struct Point3
 {
     float x = 0;
     float y = 0;
@@ -142,7 +145,7 @@ struct Point3
 
     Point3() {}
     Point3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
-};
+};*/
 
 struct LineInfo
 {
@@ -156,7 +159,7 @@ struct LineInfo
     int lineIdxInChunk = 0;
 };
 
-struct Island
+/*struct Island
 {
     std::vector<Point3> movePoints;
     std::vector<Point2> printPoints;
@@ -166,7 +169,7 @@ struct Layer
 {
     float z;
     std::vector<Island> islands;
-};
+};*/
 
 class RenderTP;
 
@@ -205,7 +208,8 @@ public:
 
 struct RenderTP
 {
-    std::vector<Layer> layers;
+    ChopperEngine::MeshInfoPtr mip;
+    //std::vector<Layer> layers;
     std::vector<TPDataChunk> *CalculateDataChunks();
     std::vector<LineInfo> lineInfos;
     std::size_t totalMillis = 0; // ETA

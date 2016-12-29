@@ -57,6 +57,7 @@ HEADERS += \
     Keyboard/keyboard.h \
     Printer/gcode.h \
     Printer/printer.h \
-    ChopperEngine/toolpath.h
+    ChopperEngine/toolpath.h \
+    ChopperEngine/meshinfo.h
 
 DEFINES += QT_APPLICATION

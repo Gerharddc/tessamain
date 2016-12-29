@@ -115,6 +115,13 @@ public:
             return (Base*)CurAddr;
         }
 
+        Base* operator--()
+        {
+            --OffItr;
+            CurAddr -= *OffItr;
+            return (Base*)CurAddr;
+        }
+
         bool operator !=(const iterator &other)
         {
             return (CurAddr != other.CurAddr);
@@ -129,6 +136,11 @@ public:
     iterator end() const
     {
         return iterator(items + curUsed, offsets.end());
+    }
+
+    std::size_t size()
+    {
+        return offsets.size();
     }
 };
 
