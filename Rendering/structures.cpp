@@ -1,124 +1,5 @@
 #include "structures.h"
 
-#include <QDebug>
-#include <iostream>
-
-Mesh::Mesh(std::size_t size)
-{
-    trigCount = size;
-
-    // Malloc is used to simply the shrinking of the arrays later on if needed
-    vertexFloats = (float*)malloc(sizeof(float) * size * 9); // This will need to be shrunk
-    indices = (std::size_t*)malloc(sizeof(std::size_t) * size * 3);
-    trigs = (Triangle*)malloc(sizeof(Triangle) * size);
-
-    // The arrays in triangles need to be initialized
-    for (std::size_t i = 0; i < size; i++)
-        new (trigs + i) Triangle();
-
-    // The std::vectors in the vertices need to be initialized, we also need to keep track of how many there are as to be able to
-    // properly destruct them later on
-    vertices = (Vertex*)malloc(sizeof(Vertex) * size * 3);  // This will need to be shrunk
-    for (std::size_t i = 0; i < size * 3; i++)
-        new (vertices + i) Vertex();
-    vertArrCount = size * 3;
-}
-
-Mesh::~Mesh()
-{
-    free(vertexFloats);
-    free(indices);
-    free(trigs);
-    delete[] vertFloats;
-    delete[] normFloats;
-
-    // Because they contains std::vectors, the vertices have to be destructed first
-    for (std::size_t i = 0; i < vertArrCount; i++)
-        vertices[i].~Vertex();
-    free(vertices);
-}
-
-void Mesh::ShrinkVertices(std::size_t vertCount)
-{
-    // Recreate the arrays that are linked insize to the amount of vertices
-    vertexCount = vertCount;
-
-    // We can simply reallocate the memory for the vertex floats
-    vertexFloats = (float*)realloc(vertexFloats, sizeof(float) * vertexCount * 3);
-
-    // We need to properly dispose of all the vertices (std::vectors) that will be lost
-    // and then reallocate the smaller amount of memory
-    // WARNING: this has never failed but the complex nature of std::vector does provide a chance of it
-    // perhaps causing strange behaviour when copied directly, please keep this in mind when debugging...
-    for (std::size_t i = vertexCount; i < vertArrCount; i++)
-    {
-        vertices[i].~Vertex();
-    }
-    vertices = (Vertex*)realloc(vertices, sizeof(Vertex) * vertexCount);
-    vertArrCount = vertexCount;
-}
-
-void Mesh::ShrinkTrigs(std::size_t newSize)
-{
-    // Reallocate the arrays with the new size
-    trigCount = newSize;
-    indices = (std::size_t*)realloc(indices, sizeof(std::size_t) * newSize * 3);
-    trigs = (Triangle*)realloc(trigs, sizeof(Triangle) * newSize);
-}
-
-const float *Mesh::getFlatVerts()
-{
-    if (vertexFloats != nullptr)
-        delete[] vertFloats;
-
-    vertFloats = new float[trigCount * 9];
-    for (std::size_t i = 0; i < trigCount; i++)
-    {
-        for (uint8_t j = 0; j < 3; j++)
-        {
-            auto idx = trigs[i].vertIdxs[j];
-
-            for (uint8_t k = 0; k < 3; k++)
-            {
-                vertFloats[(i * 9) + (j * 3) + k] = vertexFloats[(idx * 3) + k];
-            }
-        }
-    }
-    return vertFloats;
-}
-
-const float *Mesh::getFlatNorms()
-{
-    if (normFloats != nullptr)
-        delete[] vertexFloats;
-
-    normFloats = new float[trigCount * 9];
-    for (std::size_t i = 0; i <trigCount; i++)
-    {
-        glm::vec3 vecs[3];
-
-        for (uint8_t j = 0; j < 3; j++)
-        {
-            auto idx = (indices[i * 3 + j]) * 3;
-            vecs[j].x = vertexFloats[idx];
-            vecs[j].y = vertexFloats[idx + 1];
-            vecs[j].z = vertexFloats[idx + 2];
-        }
-
-        glm::vec3 e1 = vecs[1] - vecs[0];
-        glm::vec3 e2 = vecs[2] - vecs[0];
-        glm::vec3 norm = glm::normalize(glm::cross(e1, e2));
-
-        for (uint8_t j = 0; j < 3; j++)
-        {
-            normFloats[(i * 9) + (j * 3)] = norm.x;
-            normFloats[(i * 9) + (j * 3) + 1] = norm.y;
-            normFloats[(i * 9) + (j * 3) + 2] = norm.z;
-        }
-    }
-    return normFloats;
-}
-
 static inline void AddPointsToArray(float *array, Point2 &p, short count, uint32_t &arrPos)
 {
     for (short i = 0; i < count; i++)
@@ -185,6 +66,8 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
     for (std::size_t i = 0; i < mip->layerCount; i++)
     {
         LayerComponent &layer = mip->layerComponents[i];
+        float layerZ = 0.0f;
+        bool layerZSet =false;
 
         for (const LayerIsland &isle : layer.islandList)
         {
@@ -194,12 +77,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                 Point2 *printPoints = new Point2[seg->toolSegments.size()];
 
                 struct IdxInfo {
-                    std::size_t idx, len;
-
-                    IdxInfo(std::size_t _idx, std::size_t _len) {
-                        idx = _idx;
-                        len = _len;
-                    }
+                    std::size_t idx, len = 0;
                 };
 
                 IdxInfo *idxInfos = new IdxInfo[seg->toolSegments.size() / 2 + 1];
@@ -216,7 +94,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                 {
                     if (ts->type == ToolSegType::Extruded)
                     {
-                        MovingSegment *ms = ts;
+                        MovingSegment *ms = static_cast<MovingSegment*>(ts);
 
                         if (!lastExtruded)
                         {
@@ -233,10 +111,19 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                             curIdx += curLen;
                             curLen = 1;
 
-                            printPoints[curIdx] = ms->p1;
+                            printPoints[curIdx].x = (double)(ms->p1.X) / scaleFactor;
+                            printPoints[curIdx].y = (double)(ms->p1.Y) / scaleFactor;
+
+                            // TODO: find a better way to get the layer z once
+                            if (!layerZSet)
+                            {
+                                layerZ = (double)(ms->p1.Z) / scaleFactor;
+                                layerZSet = false;
+                            }
                         }
 
-                        printPoints[curIdx + curLen] = ms->p2;
+                        printPoints[curIdx + curLen].x = (double)(ms->p2.X) / scaleFactor;
+                        printPoints[curIdx + curLen].y = (double)(ms->p2.Y) / scaleFactor;
                         curLen++;
 
                         lastExtruded = true;
@@ -309,7 +196,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                             {
                                 // Add the first two parts of the first point for the last point to connect to
                                 nextPoint = printPoints[curIdx + 1];
-                                AddPointZsToArray(dc->curFloats, curPoint, layer.z, 2, dc->curFloatCount);
+                                AddPointZsToArray(dc->curFloats, curPoint, layerZ, 2, dc->curFloatCount);
                                 AddPointsToArray(dc->prevFloats, prevPoint, 2, dc->prevFloatCount);
                                 AddPointsToArray(dc->nextFloats, nextPoint, 2, dc->nextFloatCount);
                                 dc->sides[saveIdx + 0] = 10.0f;
@@ -344,7 +231,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                                 {
                                     // If this point needs to go to a new chunk then we need to add its first 2
                                     // vertices for the last one in this chunk to connect to
-                                    AddPointZsToArray(dc->curFloats, curPoint, layer.z, 2, dc->curFloatCount);
+                                    AddPointZsToArray(dc->curFloats, curPoint, layerZ, 2, dc->curFloatCount);
                                     AddPointsToArray(dc->prevFloats, prevPoint, 2, dc->prevFloatCount);
                                     AddPointsToArray(dc->nextFloats, nextPoint, 2, dc->nextFloatCount);
                                     dc->sides[saveIdx + 0] = 10.0f;
@@ -379,7 +266,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                         if (hasNoPrev)
                         {
                             // Add only 2 points
-                            AddPointZsToArray(dc->curFloats, curPoint, layer.z, 2, dc->curFloatCount);
+                            AddPointZsToArray(dc->curFloats, curPoint, layerZ, 2, dc->curFloatCount);
                             AddPointsToArray(dc->prevFloats, prevPoint, 2, dc->prevFloatCount);
                             AddPointsToArray(dc->nextFloats, nextPoint, 2, dc->nextFloatCount);
 
@@ -412,7 +299,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                         else if (hasNoNext)
                         {
                             // Add only 2 points
-                            AddPointZsToArray(dc->curFloats, curPoint, layer.z, 2, dc->curFloatCount);
+                            AddPointZsToArray(dc->curFloats, curPoint, layerZ, 2, dc->curFloatCount);
                             AddPointsToArray(dc->prevFloats, prevPoint, 2, dc->prevFloatCount);
                             AddPointsToArray(dc->nextFloats, nextPoint, 2, dc->nextFloatCount);
 
@@ -428,7 +315,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                         else
                         {
                             // Add all the position components
-                            AddPointZsToArray(dc->curFloats, curPoint, layer.z, 5, dc->curFloatCount);
+                            AddPointZsToArray(dc->curFloats, curPoint, layerZ, 5, dc->curFloatCount);
                             AddPointsToArray(dc->prevFloats, prevPoint, 5, dc->prevFloatCount);
                             AddPointsToArray(dc->nextFloats, nextPoint, 5, dc->nextFloatCount);
 

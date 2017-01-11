@@ -6,9 +6,10 @@
 
 #include "structures.h"
 
-#include <QDebug>
+//#include <QDebug>
+//#include "ChopperEngine/mesh.h"
 
-inline void ShrinkIsle(Island *isle)
+/*inline void ShrinkIsle(Island *isle)
 {
     if (isle != nullptr)
     {
@@ -18,7 +19,7 @@ inline void ShrinkIsle(Island *isle)
         if (isle->printPoints.size() > 0)
             isle->printPoints.shrink_to_fit();
     }
-}
+}*/
 
 RenderTP* GCodeImporting::ImportGCode(const char *path)
 {

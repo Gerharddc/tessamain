@@ -1,7 +1,7 @@
 #ifndef MESHINFO_H
 #define MESHINFO_H
 
-#include "Rendering/structures.h"
+#include "mesh.h"
 #include "toolpath.h"
 
 class Mesh;
