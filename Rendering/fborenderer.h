@@ -18,7 +18,6 @@ private:
     QString m_saveName = "Untitled";
     bool m_slicerRunning = false;
     QString m_slicerStatus = "Not running";
-    //QProcess *sliceProcess;
     QString gcodePath = "";
     void EmitMeshProps();
 
@@ -85,7 +84,6 @@ public:
 public slots:
     void ReadSlicerOutput();
     void SlicerFinsihed(ChopperEngine::MeshInfoPtr mip);
-    void StartSliceThread(QStringList arguments);
 
 signals:
    void meshOpacityChanged();

@@ -75,15 +75,12 @@ void CallFBOUpdate(void *context)
 
 FBORenderer::FBORenderer()
 {
-    //sliceProcess = new QProcess();
-    //QObject::connect(sliceProcess, SIGNAL(readyReadStandardError()), this, SLOT(ReadSlicerOutput()));
-    //QObject::connect(sliceProcess, SIGNAL(finished(int)), this, SLOT(SlicerFinsihed(int)));
     ComboRendering::SetUpdateHandler(CallFBOUpdate, this);
 }
 
 FBORenderer::~FBORenderer()
 {
-    //delete sliceProcess;
+
 }
 
 void FBORenderer::rotateView(float x, float y)
@@ -317,7 +314,9 @@ QString FBORenderer::sliceMeshes()
 
     // We wait async for the mesh that is being saved async and then start the slicer
     std::thread([](FBORenderer *fbo) {
-        //QString stlName = QString::fromStdString(ComboRendering::SaveMeshes(fbo->saveName().toStdString()));
+
+        // TODO: ask user if he wants to save the meshes before slicing
+
         QString stlName = fbo->saveName() + ".stl";
         fbo->gcodePath = QString(stlName);
         fbo->gcodePath.replace(".stl", ".gcode");
@@ -341,16 +340,9 @@ QString FBORenderer::printToolpath()
 
 void FBORenderer::ReadSlicerOutput()
 {
-    /*QStringList sl = QString(sliceProcess->readAllStandardError()).split("\n");
-
-    //for (QString str : sl)
-      //  std::cout << str.toStdString() << std::endl;
-
-    if (sl.last() == "")
-        sl.removeLast(); // The last one is usually empty
-    if (sl.count() > 0)
-        m_slicerStatus = sl.back();
-        emit slicerStatusChanged();*/
+    // TODO: implement channeling slicer status notifications to gui
+    //m_slicerStatus = OUTPUT;
+    //emit slicerStatusChanged();
 }
 
 void FBORenderer::SlicerFinsihed(ChopperEngine::MeshInfoPtr mip)
@@ -366,13 +358,6 @@ void FBORenderer::SlicerFinsihed(ChopperEngine::MeshInfoPtr mip)
         ComboRendering::LoadToolpath(mip);
         emit toolPathLoadedChanged();
     }).detach();
-}
-
-void FBORenderer::StartSliceThread(QStringList arguments)
-{
-    const QString program = "CuraEngine";
-
-    //sliceProcess->start(program, arguments);
 }
 
 void FBORenderer::removeSelectedMeshes()

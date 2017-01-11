@@ -214,11 +214,10 @@ std::string ComboRendering::SaveMeshes(std::string fileName)
 
 ChopperEngine::MeshInfoPtr ComboRendering::SliceMeshes(std::string fileName)
 {
-    //SaveMeshes(fileName);
-    // TODO: implement slice
-    //ChopperEngine::SliceFile(stlMeshes.begin().operator *(), fileName);
-
+    // TODO: slice all meshes
     auto mip = ChopperEngine::SliceMesh(stlMeshes.begin().operator *());
+
+    // TODO: implement dialog or something to request save
     //ChopperEngine::WriteMeshGcode(fileName, mip);
 
     return mip;
@@ -355,9 +354,6 @@ void ComboRendering::Init()
     GridRendering::Init();
     STLRendering::Init();
     ToolpathRendering::Init();
-
-    //gcodePath = GCodeImporting::ImportGCode("/home/Simon/Saved/Untitled.gcode");//"test.gcode");
-    //ToolpathRendering::SetToolpath(gcodePath);
 
     // Setup event handler for settings changes
     GlobalSettings::BedHeight.RegisterHandler(UpdateGridHandler, nullptr);

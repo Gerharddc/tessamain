@@ -9,6 +9,9 @@
 //#include <QDebug>
 //#include "ChopperEngine/mesh.h"
 
+// TODO: modify this code to work with the current
+// toolpath memory structure
+
 /*inline void ShrinkIsle(Island *isle)
 {
     if (isle != nullptr)

@@ -1,17 +1,11 @@
 #ifndef STRUCTURES
 #define STRUCTURES
 
-//#include <stdexcept>
-//#include <Misc/strings.h>
-//#include <cstring>
-//#include <limits>
 #include <vector>
-//#include <glm/glm.hpp>
-//#include <list>
 
 #include "ChopperEngine/mesh.h"
 #include "ChopperEngine/toolpath.h"
-#include "ChopperEngine/meshinfo.h" // TODO
+#include "ChopperEngine/meshinfo.h"
 
 enum GType
 {
@@ -45,16 +39,6 @@ struct Point2
     }
 };
 
-/*struct Point3
-{
-    float x = 0;
-    float y = 0;
-    float z = 0;
-
-    Point3() {}
-    Point3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
-};*/
-
 struct LineInfo
 {
     uint16_t milliSecs = 0;
@@ -66,18 +50,6 @@ struct LineInfo
     int idxInChunk = 0;
     int lineIdxInChunk = 0;
 };
-
-/*struct Island
-{
-    std::vector<Point3> movePoints;
-    std::vector<Point2> printPoints;
-};
-
-struct Layer
-{
-    float z;
-    std::vector<Island> islands;
-};*/
 
 class RenderTP;
 
@@ -117,7 +89,6 @@ public:
 struct RenderTP
 {
     ChopperEngine::MeshInfoPtr mip;
-    //std::vector<Layer> layers;
     std::vector<TPDataChunk> *CalculateDataChunks();
     std::vector<LineInfo> lineInfos;
     std::size_t totalMillis = 0; // ETA

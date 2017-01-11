@@ -11,7 +11,6 @@
 #include "stlrendering.h"
 #include "toolpathrendering.h"
 #include "gridrendering.h"
-//#include "structures.h"
 
 #include "ChopperEngine/mesh.h"
 #include "ChopperEngine/meshinfo.h"

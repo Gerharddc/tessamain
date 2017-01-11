@@ -75,8 +75,6 @@ static inline void getTrigPointFloats(Triangle &trig, double *arr, uint8_t pnt, 
     arr[2] = (double)mip->sliceMesh->vertexFloats[trig.vertIdxs[2] * 3 + pnt];
 }
 
-//static LayerComponent* layerComponents = nullptr;
-
 static inline Vertex &VertAtIdx(std::size_t idx, MeshInfoPtr mip)
 {
     if (idx > mip->sliceMesh->vertexCount)
@@ -2461,94 +2459,3 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
 
     return mip;
 }
-
-/*void ChopperEngine::SliceFile(Mesh *inputMesh, std::string outputFile)
-{
-    sliceMesh = inputMesh;
-
-    // Calculate the amount layers that will be sliced
-    // TODO
-    layerCount = (std::size_t)(sliceMesh->MaxVec.z / GlobalSettings::LayerHeight.Get()) + 1;
-
-    if (layerComponents != nullptr)
-        layerComponents = (LayerComponent*)realloc(layerComponents, sizeof(LayerComponent) * layerCount);
-    else
-        layerComponents = (LayerComponent*)malloc(sizeof(LayerComponent) * layerCount);
-
-    for (std::size_t i = 0; i < layerCount; i++)
-        new ((void*)(layerComponents + i)) LayerComponent();
-
-    // Slice the triangles into layers
-    SliceTrigsToLayers();
-
-#ifdef TEST_INITIAL_LINES
-    ToolpathLines();
-#elif defined(TEST_ISLAND_DETECTION)
-    CalculateIslandsFromInitialLines();
-    GenerateOutlineBasic();
-    CalculateBasicToolpath();
-#elif defined(TEST_OUTLINE_GENERATION)
-    CalculateIslandsFromInitialLines();
-    GenerateOutlineSegments();
-#ifdef TEST_OUTLINE_TOOLPATH
-    CalculateToolpath();
-#else
-    CalculateBasicToolpath();
-#endif
-#else
-    // Calculate islands from the original lines
-    CalculateIslandsFromInitialLines();
-
-    // Generate the outline segments
-    GenerateOutlineSegments();
-
-    // Generate the infill grids
-#ifdef FAILSAFE_INFILL
-    GenerateInfillGrids();
-#else
-    CalculateDensityDividers();
-#endif
-
-    // The top and bottom segments need to calculated before
-    // the infill outlines otherwise the infill will be seen as top or bottom
-    // Calculate the top and bottom segments
-    CalculateTopBottomSegments();
-
-    // Calculate the infill segments
-    CalculateInfillSegments();
-
-    // Calculate the support segments
-    CalculateSupportSegments();
-
-#ifdef COMBINE_INFILL
-    // Combine the infill segments
-    CombineInfillSegments();
-#endif
-
-    // Generate a raft
-    GenerateRaft();
-
-    // Generate a skirt
-    GenerateSkirt();
-
-    // Tim the infill grids to fit the segments
-    TrimInfill();
-
-    // Calculate the toolpath
-    CalculateToolpath();
-#endif
-
-    // Write the toolpath as gcode
-    StoreGCode(outputFile);
-
-    SlicerLog("Done with " + outputFile);
-
-    // Free the memory
-    if (layerComponents != nullptr)
-    {
-        for (std::size_t i = 0; i < layerCount; i++)
-            layerComponents[i].~LayerComponent();
-
-        free(layerComponents);
-    }
-}*/
