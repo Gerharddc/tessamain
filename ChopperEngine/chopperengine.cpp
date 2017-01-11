@@ -2458,6 +2458,8 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
     // Calculate the toolpath
     CalculateToolpath(mip);
 #endif
+
+    return mip;
 }
 
 /*void ChopperEngine::SliceFile(Mesh *inputMesh, std::string outputFile)

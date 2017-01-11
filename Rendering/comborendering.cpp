@@ -156,12 +156,13 @@ void ComboRendering::LoadMesh(std::string path)
     Update();
 }
 
-void ComboRendering::LoadToolpath(std::string path)
+void ComboRendering::LoadToolpath(ChopperEngine::MeshInfoPtr mip)
 {
     if (gcodePath != nullptr)
         delete gcodePath;
 
-    gcodePath = GCodeImporting::ImportGCode(path.c_str());
+    //gcodePath = GCodeImporting::ImportGCode(path.c_str());
+    gcodePath = new RenderTP(mip);
     ToolpathRendering::SetToolpath(gcodePath);
 
     // Call OpenGL upate
@@ -176,7 +177,7 @@ std::string ComboRendering::SaveMeshes(std::string fileName)
     // Remove illegal characters
     std::string fN(fileName);
     removeCharsFromString(fN, "./\\|"); // TODO: complete this list
-    const std::string saveDir = "/home/Simon/Saved/";
+    const std::string saveDir = "/home/Tessatec/Saved/";
     std::string savePath = saveDir + fN + ".stl";
     std::string error = "";
 
@@ -211,16 +212,16 @@ std::string ComboRendering::SaveMeshes(std::string fileName)
     return error;
 }
 
-std::string ComboRendering::SliceMeshes(std::string fileName)
+ChopperEngine::MeshInfoPtr ComboRendering::SliceMeshes(std::string fileName)
 {
     //SaveMeshes(fileName);
     // TODO: implement slice
     //ChopperEngine::SliceFile(stlMeshes.begin().operator *(), fileName);
 
     auto mip = ChopperEngine::SliceMesh(stlMeshes.begin().operator *());
-    ChopperEngine::WriteMeshGcode(fileName, mip);
+    //ChopperEngine::WriteMeshGcode(fileName, mip);
 
-    return "";
+    return mip;
 }
 
 void ComboRendering::RemoveMesh(Mesh *mesh)

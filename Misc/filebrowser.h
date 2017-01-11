@@ -15,7 +15,7 @@ private:
     QVariantList m_fileModel;
     bool isRootDir = true;
     QDir curDir;
-    const char * const rootDir = "/home/Simon";
+    const char * const rootDir = "/home/Tessatec";
     void GetFilesForDir();
 
 public:

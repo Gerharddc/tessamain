@@ -84,7 +84,7 @@ public:
 
 public slots:
     void ReadSlicerOutput();
-    void SlicerFinsihed(int);
+    void SlicerFinsihed(ChopperEngine::MeshInfoPtr mip);
     void StartSliceThread(QStringList arguments);
 
 signals:

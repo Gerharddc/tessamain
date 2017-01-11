@@ -322,37 +322,9 @@ QString FBORenderer::sliceMeshes()
         fbo->gcodePath = QString(stlName);
         fbo->gcodePath.replace(".stl", ".gcode");
 
-        /*QStringList arguments;
-        //arguments << "slice" << "-v";
-        //arguments << "-j" << "/home/Simon/.Cura/simon.json";
-        //arguments << "-j" << "fdmprinter.json";
-        arguments << "-j" << "/home/Simon/.Cura/fdmp.json";
-        arguments << "-v" << "-p";
-        arguments << "-o" << fbo->gcodePath;
-        arguments << "-s" << "infill_sparse_density=" + QString::number(GlobalSettings::InfillDensity.Get());
-        arguments << "-s" << "layer_height=" + QString::number(GlobalSettings::LayerHeight.Get());
-        arguments << "-s" << "skirt_line_count=" + QString::number(GlobalSettings::SkirtLineCount.Get());
-        arguments << "-s" << "skirt_gap=" + QString::number(GlobalSettings::SkirtDistance.Get());
-        arguments << "-s" << "speed_print=" + QString::number(GlobalSettings::PrintSpeed.Get());
-        arguments << "-s" << "speed_infill=" + QString::number(GlobalSettings::InfillSpeed.Get());
-        arguments << "-s" << "speed_topbottom=" + QString::number(GlobalSettings::TopBottomSpeed.Get());
-        arguments << "-s" << "speed_travel=" + QString::number(GlobalSettings::TravelSpeed.Get());
-        arguments << "-s" << "speed_layer_0=" + QString::number(GlobalSettings::FirstLineSpeed.Get());
-        arguments << "-s" << "retraction_speed=" + QString::number(GlobalSettings::RetractionSpeed.Get());
-        arguments << "-s" << "retraction_amount=" + QString::number(GlobalSettings::RetractionDistance.Get());
-        arguments << "-s" << "shell_thickness=" + QString::number(GlobalSettings::ShellThickness.Get());
-        arguments << "-s" << "top_bottom_thickness=" + QString::number(GlobalSettings::TopBottomThickness.Get());
-        arguments << "-s" << "material_print_temperature=" + QString::number(GlobalSettings::PrintTemperature.Get());
-        arguments << "-s" << "support_enable=false";
-        //arguments << "-l" << stlName;
-        arguments << stlName;
+        auto mip = ComboRendering::SliceMeshes(fbo->gcodePath.toStdString());
 
-        // Start the slicer through the message queue (thread safe)
-        QMetaObject::invokeMethod(fbo, "StartSliceThread", Q_ARG(QStringList, arguments));*/
-
-        ComboRendering::SliceMeshes(fbo->gcodePath.toStdString());
-
-        QMetaObject::invokeMethod(fbo, "SlicerFinsihed", Q_ARG(int, 1));
+        QMetaObject::invokeMethod(fbo, "SlicerFinsihed", Q_ARG(ChopperEngine::MeshInfoPtr, mip));
     }, this).detach();
 
     return "started";
@@ -381,7 +353,7 @@ void FBORenderer::ReadSlicerOutput()
         emit slicerStatusChanged();*/
 }
 
-void FBORenderer::SlicerFinsihed(int)
+void FBORenderer::SlicerFinsihed(ChopperEngine::MeshInfoPtr mip)
 {
     m_slicerRunning = false;
     m_slicerStatus = "Finished";
@@ -391,7 +363,7 @@ void FBORenderer::SlicerFinsihed(int)
     // Load the toolpath asynchronously because it can take some time
     // TODO: tell the user that we are busy
     std::thread([=]() {
-        ComboRendering::LoadToolpath(gcodePath.toStdString());
+        ComboRendering::LoadToolpath(mip);
         emit toolPathLoadedChanged();
     }).detach();
 }

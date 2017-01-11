@@ -10,6 +10,7 @@
 #include "Misc/filebrowser.h"
 #include "Misc/globalsettings.h"
 #include "Misc/qtsettings.h"
+#include "ChopperEngine/meshinfo.h"
 
 #include <QFile>
 #include <QString>
@@ -19,25 +20,6 @@
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
-
-#ifdef ANDROID
-#define FILECOUNT 3
-    QString* names = new QString[FILECOUNT];
-    names[0] = "bin.stl";
-    names[1] = "cube.vsh";
-    names[2] = "cube.fsh";
-    for (uint8_t i = 0; i < FILECOUNT; i++)
-    {
-        QFile dfile("assets:/" + names[i]);
-        if (dfile.exists())
-        {
-            QString name = "./" + names[i];
-            dfile.copy(name);
-            QFile::setPermissions(name, QFile::ReadOwner);
-        }
-    }
-    delete[] names;
-#endif
 
     // Initialize
     GlobalSettings::LoadSettings();
@@ -64,6 +46,8 @@ int main(int argc, char *argv[])
 #else
 #define ROOTQML "qrc:/MainScreen.qml"
 #endif
+
+    qRegisterMetaType<ChopperEngine::MeshInfoPtr>("ChopperEngine::MeshInfoPtr");
 
     view.setSource(QUrl(QStringLiteral(ROOTQML)));
 

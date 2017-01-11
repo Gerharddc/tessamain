@@ -11,7 +11,10 @@
 #include "stlrendering.h"
 #include "toolpathrendering.h"
 #include "gridrendering.h"
-#include "structures.h"
+//#include "structures.h"
+
+#include "ChopperEngine/mesh.h"
+#include "ChopperEngine/meshinfo.h"
 
 namespace ComboRendering
 {
@@ -28,11 +31,11 @@ namespace ComboRendering
     void Zoom(float scale);
     void ResetView(bool updateNow);
     void LoadMesh(std::string path);
-    void LoadToolpath(std::string path);
+    void LoadToolpath(ChopperEngine::MeshInfoPtr mip);
     void RemoveMesh(Mesh *mesh);
     void Update();
     std::string SaveMeshes(std::string fileName);
-    std::string SliceMeshes(std::string fileName);
+    ChopperEngine::MeshInfoPtr SliceMeshes(std::string fileName);
 
     void TestMouseIntersection(float x, float y);
 

@@ -1,6 +1,8 @@
 #ifndef MESHINFO_H
 #define MESHINFO_H
 
+#include <memory>
+
 #include "mesh.h"
 #include "toolpath.h"
 
