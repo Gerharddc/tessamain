@@ -42,6 +42,8 @@ namespace ChopperEngine
 
     public:
         LineWriter(const MeshInfoPtr _mip);
+        ~LineWriter();
+
         std::string ReadNextLine();
         bool HasLineToRead();
     };

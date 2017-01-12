@@ -2487,8 +2487,10 @@ void LineWriter::WriteLinesFunc()
     stringBuf.push(os.str()); \
     os.str(""); \
     std::unique_lock<std::mutex> lck(mtx); \
-    while (stringBuf.size() > TargetBufSize) \
+    while (!done && (stringBuf.size() > TargetBufSize)) \
         cv.wait(lck); \
+    if (done) \
+        return; // Stop the thread if notified to do so
 
     ADDLINE(";Total amount of layers: " + mip->layerCount);
     ADDLINE(";Estimated time: " + std::to_string(0)); // TODO
@@ -2644,6 +2646,10 @@ void LineWriter::WriteLinesFunc()
         }
     }
 
+    // Check if the thread hasn't been notified to stop
+    if (done)
+        return;
+
     ADDLINE("M104 S0");
     ADDLINE("G91");
     ADDLINE("G1 E-5 F4800");
@@ -2656,6 +2662,13 @@ void LineWriter::WriteLinesFunc()
 LineWriter::LineWriter(const MeshInfoPtr _mip) : mip(_mip)
 {
     bufferThread = std::thread(&LineWriter::WriteLinesFunc, this);
+}
+
+LineWriter::~LineWriter()
+{
+    // Tell the thread to stop in case it is still running
+    done = true;
+    cv.notify_all();
 }
 
 std::string LineWriter::ReadNextLine()
