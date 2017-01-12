@@ -2479,18 +2479,26 @@ void LineWriter::WriteLinesFunc()
 
     // This macro adds a string line to the queue
 #define ADDLINE(text) \
-    stringBuf.push(text);
+    { \
+        std::lock_guard<std::mutex> lock(bufMtx); \
+        stringBuf.push(text); \
+    }
 
     // This macro pushes the current stringbuf line to the
     // queue and waits if the queue is full
 #define PUSHLINE() \
-    stringBuf.push(os.str()); \
-    os.str(""); \
+    { \
+        std::lock_guard<std::mutex> lock(bufMtx); \
+        stringBuf.push(os.str()); \
+        os.str(""); \
+    } \
+    \
     std::unique_lock<std::mutex> lck(mtx); \
     while (!done && (stringBuf.size() > TargetBufSize)) \
+    /*while (!done && (counter > TargetBufSize))*/ \
         cv.wait(lck); \
     if (done) \
-        return; // Stop the thread if notified to do so
+        return;
 
     ADDLINE(";Total amount of layers: " + mip->layerCount);
     ADDLINE(";Estimated time: " + std::to_string(0)); // TODO
@@ -2669,20 +2677,29 @@ LineWriter::~LineWriter()
     // Tell the thread to stop in case it is still running
     done = true;
     cv.notify_all();
+
+    if (bufferThread.joinable())
+        bufferThread.join();
 }
 
 std::string LineWriter::ReadNextLine()
 {
     // Return the next string in the queue and tell the thread generating the
     // lines that a spot might have opened.
-    std::string ret = stringBuf.front();
-    stringBuf.pop();
+    std::lock_guard<std::mutex> lock(bufMtx);
+    std::string ret = "";
+
+    if (!stringBuf.empty())
+    {
+        ret = stringBuf.front();
+        stringBuf.pop();
+    }
     cv.notify_all();
 
     return ret;
 }
 
-bool LineWriter::HasLineToRead()
+bool LineWriter::HasLineToRead() const
 {
     return !(done && stringBuf.empty());
 }

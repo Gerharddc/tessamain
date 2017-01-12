@@ -28,8 +28,7 @@ namespace ChopperEngine
 
     class LineWriter {
     private:
-        //std::atomic_bool canAddLines { true };
-        std::mutex mtx;
+        std::mutex mtx, bufMtx;
         std::condition_variable cv;
         const MeshInfoPtr mip;
         std::atomic_bool done { false };
@@ -45,7 +44,7 @@ namespace ChopperEngine
         ~LineWriter();
 
         std::string ReadNextLine();
-        bool HasLineToRead();
+        bool HasLineToRead() const;
     };
 }
 
