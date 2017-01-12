@@ -3,10 +3,15 @@
 
 #include <string>
 #include <memory>
+#include <queue>
+
+#include <atomic>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 #include "meshinfo.h"
-
-class Mesh;
+#include "mesh.h"
 
 namespace ChopperEngine
 {
@@ -15,10 +20,31 @@ namespace ChopperEngine
     extern MeshInfoPtr SliceMesh(Mesh *inputMesh);
     extern void WriteMeshGcode(std::string outputFile, MeshInfoPtr mip);
 
-    //extern void SliceFile(Mesh* inputMesh, std::string outputFile);
     extern void SlicerLog(std::string message);
-    //extern std::size_t layerCount;
-    //extern Mesh* sliceMesh;
+
+    // The linewriter is an object that writes a toolpath to text lines in
+    // a buffer. The buffer has a certain size and it tries to only keep it
+    // full instead of writing everything at once.
+
+    class LineWriter {
+    private:
+        //std::atomic_bool canAddLines { true };
+        std::mutex mtx;
+        std::condition_variable cv;
+        const MeshInfoPtr mip;
+        std::atomic_bool done { false };
+
+        const int TargetBufSize = 20;
+        std::queue<std::string> stringBuf;
+
+        void WriteLinesFunc();
+        std::thread bufferThread;
+
+    public:
+        LineWriter(const MeshInfoPtr _mip);
+        std::string ReadNextLine();
+        bool HasLineToRead();
+    };
 }
 
 #endif // CHOPPERENGINE_H
