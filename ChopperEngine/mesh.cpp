@@ -1,4 +1,5 @@
 #include "mesh.h"
+#include <cstdlib>
 
 Mesh::Mesh(std::size_t size)
 {

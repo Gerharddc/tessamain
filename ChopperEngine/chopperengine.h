@@ -33,7 +33,7 @@ namespace ChopperEngine
         const MeshInfoPtr mip;
         std::atomic_bool done { false };
 
-        const int TargetBufSize = 20;
+        const int TargetBufSize = 100;
         std::queue<std::string> stringBuf;
 
         void WriteLinesFunc();

@@ -2482,6 +2482,7 @@ void LineWriter::WriteLinesFunc()
     { \
         std::lock_guard<std::mutex> lock(bufMtx); \
         stringBuf.push(text); \
+        cv.notify_all(); \
     }
 
     // This macro pushes the current stringbuf line to the
@@ -2491,16 +2492,16 @@ void LineWriter::WriteLinesFunc()
         std::lock_guard<std::mutex> lock(bufMtx); \
         stringBuf.push(os.str()); \
         os.str(""); \
+        cv.notify_all(); \
     } \
     \
     std::unique_lock<std::mutex> lck(mtx); \
     while (!done && (stringBuf.size() > TargetBufSize)) \
-    /*while (!done && (counter > TargetBufSize))*/ \
         cv.wait(lck); \
     if (done) \
         return;
 
-    ADDLINE(";Total amount of layers: " + mip->layerCount);
+    ADDLINE(";Total amount of layers: " + std::to_string(mip->layerCount));
     ADDLINE(";Estimated time: " + std::to_string(0)); // TODO
     ADDLINE(";Estimated filament: " + std::to_string(0)); // TODO
     ADDLINE("G21");
@@ -2684,16 +2685,24 @@ LineWriter::~LineWriter()
 
 std::string LineWriter::ReadNextLine()
 {
+    // Wait for the buffer to get a line if needed
+    if (!done && stringBuf.empty())
+    {
+        // The buffering thread will notify when a line has been added
+        std::unique_lock<std::mutex> lck(mtx);
+        while (!done && stringBuf.empty())
+            cv.wait(lck);
+    }
+
     // Return the next string in the queue and tell the thread generating the
     // lines that a spot might have opened.
     std::lock_guard<std::mutex> lock(bufMtx);
-    std::string ret = "";
+    std::string ret = ";ERROR: Nothing to read";
 
-    if (!stringBuf.empty())
-    {
-        ret = stringBuf.front();
-        stringBuf.pop();
-    }
+    ret = stringBuf.front();
+    stringBuf.pop();
+
+    // Tell the buffering thread that space has opened
     cv.notify_all();
 
     return ret;
