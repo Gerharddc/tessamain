@@ -63,3 +63,7 @@ HEADERS += \
     ChopperEngine/mesh.h
 
 DEFINES += QT_APPLICATION
+
+CONFIG(rpi):DEFINES += \
+    GLES    \
+    ROTATE_SCREEN

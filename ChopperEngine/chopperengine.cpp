@@ -22,33 +22,7 @@
 using namespace ChopperEngine;
 using namespace ClipperLib;
 
-/*std::size_t ChopperEngine::layerCount = 0;
-Mesh* ChopperEngine::sliceMesh = nullptr;*/
 static LogDelegate slicerLogger = nullptr;
-
-// Below are some test that output GCode allowing for visual tests
-// Uncomment to test if initial lines are calculated properly
-//#define TEST_INITIAL_LINES
-// Uncomment to test if islands are generated properly
-//#define TEST_ISLAND_DETECTION
-// Uncomment to test full outline generation
-//#define TEST_OUTLINE_GENERATION
-// Uncomment to test outline toolpath generation
-//#define TEST_OUTLINE_TOOLPATH
-// Uncomment to test infill with safe toolpath
-//#define TEST_INFILL
-// Uncomment to use failsafe infill
-//#define FAILSAFE_INFILL
-// Uncomment to enable testing type toolpahts
-//#define TOOLPATH_TESTS
-
-#if defined(TEST_OUTLINE_TOOLPATH)
-#define TEST_OUTLINE_GENERATION
-#endif
-
-#ifdef TEST_INFILL
-#define TOOLPATH_TESTS
-#endif
 
 // Below are some experimental features disabled by default
 // Uncomment to combine a few layers' worth of infill segment
@@ -61,13 +35,6 @@ void ChopperEngine::SlicerLog(std::string message)
 
     std::cout << message << std::endl;
 }
-
-struct InfillGrid
-{
-    Paths leftList, rightList;
-};
-
-static std::map<float, InfillGrid> InfillGridMap;
 
 static inline void getTrigPointFloats(Triangle &trig, double *arr, uint8_t pnt, MeshInfoPtr mip)
 {
@@ -99,7 +66,6 @@ static inline Triangle &TrigAtIdx(std::size_t idx, MeshInfoPtr mip)
 
     return mip->sliceMesh->trigs[idx];
 }
-
 
 // TODO: reduce allocation of items to vectors, rather emplaceback
 
@@ -348,41 +314,6 @@ static void ProcessPolyNode(PolyNode *pNode, std::vector<LayerIsland> &isleList)
         isleList.emplace_back(std::move(isle));
     }
 }
-
-#ifdef TEST_INITIAL_LINES
-static inline void ToolpathLines(MeshInfoPtr mip)
-{
-    SlicerLog("Calculating toolpath from initial lines");
-
-    IntPoint lastPoint(0, 0);
-    cInt lastZ = 0;
-
-    for (std::size_t i = 0; i < mip->layerCount; i++)
-    {
-        SlicerLog("Line toolpath: " + std::to_string(i));
-        LayerComponent &curLayer = mip->layerComponents[i];
-
-        std::vector<TrigLineSegment> &lineList = curLayer.initialLineList;
-
-        curLayer.islandList.emplace_back();
-        LayerIsland &isle = curLayer.islandList.back();
-        LayerSegment &seg = isle.segments.emplace<LayerSegment>(SegmentType::OutlineSegment);
-
-        // Move to the new z position
-        // We need half a layerheight for the filament
-        cInt newZ = (GlobalSettings::LayerHeight.Get() * scaleFactor) * ((double)(i) + 0.5);
-        curLayer.initialLayerMoves.emplace_back(lastPoint, lastZ, newZ, curLayer.layerSpeed);
-        lastZ = newZ;
-
-        for (TrigLineSegment line : lineList)
-        {
-            seg.toolSegments.emplace<TravelSegment>(lastPoint, line.p1, lastZ, curLayer.moveSpeed);
-            seg.toolSegments.emplace<ExtrudeSegment>(line.p1, line.p2, lastZ, seg.segmentSpeed);
-            lastPoint = line.p2;
-        }
-    }
-}
-#endif
 
 static IntPoint operator-(const IntPoint &p1, const IntPoint &p2)
 {
@@ -811,29 +742,6 @@ static inline void GenerateOutlineSegments(MeshInfoPtr mip)
     MultiRunFunction(GenerateOutlineSegmentsMF, 0, mip->layerCount, mip);
 }
 
-#ifdef TEST_ISLAND_DETECTION
-static inline void GenerateOutlineBasic(MeshInfoPtr mip)
-{
-    SlicerLog("Generating outline basic");
-
-    for (std::size_t i = 0; i < mip->layerCount; i++)
-    {
-        LayerComponent &layerComp = mip->layerComponents[i];
-
-        SlicerLog("Basic outline: " + std::to_string(i));
-
-        for (LayerIsland &isle : layerComp.islandList)
-        {
-            // Place the newly created outline in its own segment
-            LayerSegment &outlineSegment = isle.segments.emplace<LayerSegment>(SegmentType::OutlineSegment);
-            outlineSegment.segmentSpeed = layerComp.layerSpeed;
-            outlineSegment.outlinePaths = isle.outlinePaths;
-        }
-    }
-}
-#endif
-
-#ifndef FAILSAFE_INFILL
 std::unordered_map<float, cInt> densityDividers;
 
 static void CalculateDensityDivider(float density)
@@ -861,93 +769,6 @@ static inline void CalculateDensityDividers()
     CalculateDensityDivider(100.0f);
     CalculateDensityDivider(10.0f);
 }
-#endif
-
-#ifdef FAILSAFE_INFILL
-static inline void GenerateInfillGrid(float density, float angle = 45.0f / 180.0f * PI, MeshInfoPtr mip)
-{
-    // TODO: get blank constructor working
-    InfillGridMap.emplace(std::make_pair(density, InfillGrid()));
-    InfillGrid &grid = InfillGridMap[density];
-    Paths &rightList = grid.rightList;
-    Paths &leftList = grid.leftList;
-
-    density /= 100.0f;
-
-    // Calculate the needed spacing
-
-    // d% = 1 / (x% + 1)
-    // d% * x + d% = 1
-    // a + d% = 1
-    // a = 1 - d%
-    // x = a / d%
-
-    float a = 1 - density;
-    float x = a / density;
-    uint spacing = (uint)(NozzleWidth * scaleFactor * x);
-    uint divider = spacing + (NozzleWidth * scaleFactor);
-
-    // 2 points of linesegment
-    IntPoint p1, p2;
-
-    float MaxY = mip->sliceMesh->MaxVec.y;
-    float MinY = mip->sliceMesh->MinVec.y;
-    float MinX = mip->sliceMesh->MinVec.x;
-    float MaxX = mip->sliceMesh->MaxVec.x;
-
-    // We need to start creating diagonal lines before
-    // the min x sothat there are lines over every part of the model
-    cInt xOffset = (cInt)((MaxY - MinY) * scaleFactor / std::tan(angle));
-    cInt modMinX = MinX - xOffset;
-
-    std::size_t amountOfLines = (std::size_t)((MaxX * scaleFactor - modMinX) / divider);
-
-    cInt minY = (cInt)(MinY * scaleFactor);
-    cInt maxY = (cInt)(MaxY * scaleFactor);
-
-    // Calculate the right and left line simultaneously
-    for (std::size_t i = 0; i < amountOfLines; i++)
-    {
-        // First line angled to the right
-        p1.X = modMinX + (i * divider) + (cInt)(NozzleWidth * scaleFactor / 2);
-        p1.Y = minY;
-        p2.X = p1.X + xOffset;
-        p2.Y = maxY;
-
-        // We make use of duplicated points so that the below changes do not affect this line
-        Path line;
-        line.push_back(p1);
-        line.push_back(p2);
-        line.shrink_to_fit();
-        rightList.push_back(line);
-
-        p2.Y = minY;
-        p1.Y = maxY;
-
-        line.clear();
-        line.push_back(p1);
-        line.push_back(p2);
-        line.shrink_to_fit();
-        leftList.push_back(line);
-    }
-
-    // Optimize the grids
-    leftList.shrink_to_fit();
-    rightList.shrink_to_fit();
-}
-
-static inline void GenerateInfillGrids()
-{
-    // Figure out what densities we need
-    // TODO:
-
-    InfillGridMap.clear();
-
-    GenerateInfillGrid(15.0f);
-    GenerateInfillGrid(100.0f);
-    GenerateInfillGrid(10.0f);
-}
-#endif
 
 static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
 {
@@ -1333,7 +1154,6 @@ static inline void GenerateSkirt(MeshInfoPtr mip)
     SlicerLog("Generating skirt");
 }
 
-#ifndef FAILSAFE_INFILL
 struct SectPoint
 {
     IntPoint point;
@@ -1563,27 +1383,6 @@ static void FillInPaths(const Paths &outlines, std::vector<LineSegment> &infillL
         }
     }
 }
-#else
-
-static inline void ClipLinesToPaths(std::vector<LineSegment> &lines, const Paths &gridLines, const Paths &paths)
-{
-    Clipper clipper;
-    PolyTree result;
-    clipper.AddPaths(gridLines, PolyType::ptSubject, false);
-    clipper.AddPaths(paths, PolyType::ptClip, true);
-    clipper.Execute(ClipType::ctIntersection, result);
-
-    for (PolyNode *node : result.Childs)
-    {
-        if (node->Contour.size() == 2)
-        {
-            // Make sure the infill line is longer than at least double the nozzlewidth
-            if (SquaredDist(node->Contour[0], node->Contour[1]) > (cInt)(NozzleWidth * scaleFactor * scaleFactor * 2))
-                lines.emplace_back(node->Contour[0], node->Contour[1]);
-        }
-    }
-}
-#endif
 
 static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
 {
@@ -1625,12 +1424,7 @@ static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFla
                         break;
                     }
 
-#ifdef FAILSAFE_INFILL
-                    ClipLinesToPaths(seg->fillLines, (goRight) ? InfillGridMap[density].rightList :
-                                                              InfillGridMap[density].leftList, seg->outlinePaths);
-#else
                     FillInPaths(seg->outlinePaths, seg->fillLines, density, goRight);
-#endif
 
                     seg->fillDensity = density;
                 }
@@ -1939,62 +1733,6 @@ static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* 
         curLayer.initialLayerMoves.emplace_back(lastPoint, lastZ, newZ, curLayer.layerSpeed);
         lastZ = newZ;
 
-#ifdef TOOLPATH_TESTS
-        // TODO: we should actually move from each island to the closest one left
-        for (LayerIsland &isle : curLayer.islandList)
-        {
-            // The outline segments of an island should also have been generated before all infill type segments
-
-            // TODO: we should actually move from each segment to the closest one left
-            for (LayerSegment *seg : isle.segments)
-            {
-                // Infill segments have infill lines whilst other segments have their
-                // outlines extruded
-                if (SegmentWithInfill* segment = dynamic_cast<SegmentWithInfill*>(seg))
-                {
-                    // This segment contains its linesegments in its fill polygons
-                    LineList &lineList = segment->fillLines;
-
-                    // Move to the next segment if this one does not have any lines
-                    if (lineList.size() < 1)
-                        continue;
-
-                    // We now need to move to the new segment
-                    AddRetractedMove(seg->toolSegments, lastPoint, lineList.front().p1, curLayer.moveSpeed, lastZ);
-
-#ifdef TEST_INFILL
-                    for (LineSegment &line : lineList)
-                    {
-                        seg->toolSegments.emplace<TravelSegment>(lastPoint, line.p1, lastZ, curLayer.moveSpeed);
-                        seg->toolSegments.emplace<ExtrudeSegment>(line, lastZ, seg->segmentSpeed);
-                        lastPoint = line.p2;
-                    }
-#endif
-                }
-                else
-                {
-//#define NO_OUTLINE_TOOLPATH
-#if !defined(NO_OUTLINE_TOOLPATH) || !defined(TEST_INFILL)
-                    // This segment contains its linesegments in its outline polygons
-                    for (Path &path : seg->outlinePaths)
-                    {
-                        if (path.size() < 3)
-                            continue;
-
-                        AddRetractedMove(seg->toolSegments, lastPoint, path.front(), curLayer.moveSpeed, lastZ);
-
-                        for (std::size_t i = 0; i < path.size() - 1; i++)
-                            seg->toolSegments.emplace<ExtrudeSegment>(path[i], path[i + 1], lastZ, seg->segmentSpeed);
-
-                        seg->toolSegments.emplace<ExtrudeSegment>(path.back(), path.front(), lastZ, seg->segmentSpeed);
-
-                        lastPoint = path.front();
-                    }
-#endif
-                }
-            }
-        }
-#else
         // Create a list of islands left to go to
         std::size_t isleCount = curLayer.islandList.size();
         std::size_t islesLeft = isleCount;
@@ -2125,7 +1863,6 @@ static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* 
         }
 
         delete[] islesUsed;
-#endif
 
         LayerLastPoints[i] = lastPoint;
     }
@@ -2150,63 +1887,6 @@ static inline void CalculateToolpath(MeshInfoPtr mip)
 
     delete[] LayerLastPoints;
 }
-
-#if defined(TEST_ISLAND_DETECTION) || defined(TEST_OUTLINE_GENERATION)
-// This is a test method used to calculate a horible toolpath that only renders correct
-// as to evaluate other parts of the process for correctness.
-static inline void CalculateBasicToolpath(MeshInfoPtr mip)
-{
-    SlicerLog("Calculating basic toolpath");
-
-    IntPoint lastPoint(0, 0);
-    cInt lastZ = 0;
-
-    for (std::size_t i = 0; i < mip->layerCount; i++)
-    {
-        SlicerLog("Basic toolpath: " + std::to_string(i));
-        LayerComponent &curLayer = mip->layerComponents[i];
-
-        // Move to the new z position
-        // We need half a layerheight for the filament
-        cInt newZ = (GlobalSettings::LayerHeight.Get() * scaleFactor) * ((double)(i) + 0.5);
-        curLayer.initialLayerMoves.emplace_back(lastPoint, lastZ, newZ, curLayer.layerSpeed);
-        lastZ = newZ;
-
-        // TODO: we should actually move from each island to the closest one left
-        for (LayerIsland &isle : curLayer.islandList)
-        {
-            // The outline segments of an island should also have been generated before all infill type segments
-            // TODO: all outlines 1 list = fokop
-            for (LayerSegment *seg : isle.segments)
-            {
-                // This segment contains its linesegments in its outline polygons
-                for (Path &path : seg->outlinePaths)
-                {
-                    if (path.size() < 3)
-                        continue;
-
-                    LineList lineList;
-
-                    for (std::size_t i = 0; i < path.size() - 1; i++)
-                        lineList.emplace_back(path[i], path[i + 1]);
-
-                    lineList.emplace_back(path.back(), path.front());
-
-                    if (lineList.size() < 1)
-                        continue;
-
-                    seg->toolSegments.emplace<TravelSegment>(lastPoint, lineList[0].p1, lastZ, curLayer.moveSpeed);
-
-                    for (LineSegment line : lineList)
-                        seg->toolSegments.emplace<ExtrudeSegment>(line, lastZ, seg->segmentSpeed);
-
-                    lastPoint = lineList.back().p2;
-                }
-            }
-        }
-    }
-}
-#endif
 
 void ChopperEngine::WriteMeshGcode(std::string outFilePath, MeshInfoPtr mip)
 {
@@ -2401,21 +2081,6 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
     // Slice the triangles into layers
     SliceTrigsToLayers(mip);
 
-#ifdef TEST_INITIAL_LINES
-    ToolpathLines(mip);
-#elif defined(TEST_ISLAND_DETECTION)
-    CalculateIslandsFromInitialLines(mip);
-    GenerateOutlineBasic(mip);
-    CalculateBasicToolpath(mip);
-#elif defined(TEST_OUTLINE_GENERATION)
-    CalculateIslandsFromInitialLines(mip);
-    GenerateOutlineSegments(mip);
-#ifdef TEST_OUTLINE_TOOLPATH
-    CalculateToolpath(mip);
-#else
-    CalculateBasicToolpath(mip);
-#endif
-#else
     // Calculate islands from the original lines
     CalculateIslandsFromInitialLines(mip);
 
@@ -2423,11 +2088,7 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
     GenerateOutlineSegments(mip);
 
     // Generate the infill grids
-#ifdef FAILSAFE_INFILL
-    GenerateInfillGrids();
-#else
     CalculateDensityDividers();
-#endif
 
     // The top and bottom segments need to calculated before
     // the infill outlines otherwise the infill will be seen as top or bottom
@@ -2456,7 +2117,6 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
 
     // Calculate the toolpath
     CalculateToolpath(mip);
-#endif
 
     return mip;
 }

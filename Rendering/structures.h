@@ -26,7 +26,8 @@ struct Point2
     int64_t lineNum = -1; // The gcode line
 
     Point2() {}
-    Point2(float _x, float _y, int64_t _lineNum) : x(_x), y(_y), lineNum(_lineNum) {}
+    Point2(float _x, float _y) : x(_x), y(_y) {}
+    Point2(double _x, double _y) : x(_x), y(_y) {}
 
     bool operator== (Point2 &b)
     {
