@@ -8,14 +8,14 @@ void Progressor::StartNextStep(int stepParts)
     stepParts_ = stepParts;
     partsDone = 0;
 
-    changeCallback_(CalculateProgress());
+    changeCallback_(CalculateProgress(), callbackContext_);
 }
 
 void Progressor::CompleteStepPart()
 {
     partsDone++;
 
-    changeCallback_(CalculateProgress());
+    changeCallback_(CalculateProgress(), callbackContext_);
 }
 
 float Progressor::CalculateProgress()

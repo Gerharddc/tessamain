@@ -5,7 +5,7 @@ namespace ChopperEngine
 {
     class Progressor {
     public:
-        typedef void (*CallbackFunction)(float);
+        typedef void (*ProgressCallback)(float, const void*);
     private:
         int stepsCount_;
         int stepsDone;
@@ -13,12 +13,14 @@ namespace ChopperEngine
         int stepParts_;
         int partsDone;
 
-        CallbackFunction changeCallback_;
+        const ProgressCallback changeCallback_;
+        const void * const callbackContext_;
 
         float CalculateProgress();
     public:
-        Progressor(int stepsCount, CallbackFunction changeCallback)
-            : stepsCount_(stepsCount), changeCallback_(changeCallback)
+        Progressor(int stepsCount, ProgressCallback changeCallback, const void* callbackContext)
+            : stepsCount_(stepsCount), changeCallback_(changeCallback),
+              callbackContext_(callbackContext)
         {
             stepsDone = -1;
         }

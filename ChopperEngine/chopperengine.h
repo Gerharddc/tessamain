@@ -11,7 +11,8 @@ namespace ChopperEngine
 {
     typedef void (*LogDelegate)(std::string message);
 
-    extern MeshInfoPtr SliceMesh(Mesh *inputMesh);
+    extern MeshInfoPtr SliceMesh(Mesh *inputMesh, Progressor::ProgressCallback callback,
+                                 const void *callbackContext);
 
     extern void SlicerLog(std::string message);    
 }

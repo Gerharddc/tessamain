@@ -84,6 +84,7 @@ public:
 public slots:
     void ReadSlicerOutput();
     void SlicerFinsihed(ChopperEngine::MeshInfoPtr mip);
+    void SetSlicerProgess(float progress);
 
 signals:
    void meshOpacityChanged();

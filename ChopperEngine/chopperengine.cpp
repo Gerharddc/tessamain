@@ -1919,15 +1919,11 @@ static inline void CalculateToolpath(MeshInfoPtr mip, Progressor &prog)
     delete[] LayerLastPoints;
 }
 
-static void PrintCallback(float prog)
-{
-    std::cout << "Progress: " << prog << std::endl;
-}
-
-MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
+MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh, Progressor::ProgressCallback callback,
+                                     const void *callbackContext)
 {
     MeshInfoPtr mip = std::make_shared<MeshInfo>(inputMesh);
-    Progressor prog = Progressor(7, &PrintCallback);
+    Progressor prog = Progressor(7, callback, callbackContext);
 
     // Slice the triangles into layers
     SliceTrigsToLayers(mip, prog); // Step 1

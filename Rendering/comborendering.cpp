@@ -212,14 +212,13 @@ std::string ComboRendering::SaveMeshes(std::string fileName)
     return error;
 }
 
-ChopperEngine::MeshInfoPtr ComboRendering::SliceMeshes(std::string fileName)
+ChopperEngine::MeshInfoPtr ComboRendering::SliceMeshes(ChopperEngine::Progressor::ProgressCallback callback,
+                                                       const void *callbackContext)
 {
     // TODO: slice all meshes
     STLRendering::PrepMeshesSave(stlMeshes);
-    auto mip = ChopperEngine::SliceMesh(stlMeshes.begin().operator *());
-
-    // TODO: implement dialog or something to request save
-    //ChopperEngine::WriteMeshGcode(fileName, mip);
+    auto mip = ChopperEngine::SliceMesh(stlMeshes.begin().operator *(),
+                                        callback, callbackContext);
 
     return mip;
 }

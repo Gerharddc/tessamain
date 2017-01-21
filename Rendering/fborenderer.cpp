@@ -294,6 +294,17 @@ void FBORenderer::setSaveName(QString sav)
     }
 }
 
+void FBORenderer::SetSlicerProgess(float progress)
+{
+    m_slicerStatus = QString::number(progress, 'f', 2) + "%";
+    emit slicerStatusChanged();
+}
+
+static void SlicerProgressCallback(float progress, const void *context)
+{
+    QMetaObject::invokeMethod((QObject*)context, "SetSlicerProgess", Q_ARG(float, progress));
+}
+
 QString FBORenderer::sliceMeshes()
 {
     if (m_slicerRunning)
@@ -317,11 +328,11 @@ QString FBORenderer::sliceMeshes()
 
         // TODO: ask user if he wants to save the meshes before slicing
 
-        QString stlName = fbo->saveName() + ".stl";
+        /*QString stlName = fbo->saveName() + ".stl";
         fbo->gcodePath = QString(stlName);
-        fbo->gcodePath.replace(".stl", ".gcode");
+        fbo->gcodePath.replace(".stl", ".gcode");*/
 
-        auto mip = ComboRendering::SliceMeshes(fbo->gcodePath.toStdString());
+        auto mip = ComboRendering::SliceMeshes(&SlicerProgressCallback, (const void*)fbo);
 
         QMetaObject::invokeMethod(fbo, "SlicerFinsihed", Q_ARG(ChopperEngine::MeshInfoPtr, mip));
     }, this).detach();

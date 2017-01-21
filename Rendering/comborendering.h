@@ -14,6 +14,7 @@
 
 #include "ChopperEngine/mesh.h"
 #include "ChopperEngine/meshinfo.h"
+#include "ChopperEngine/progressor.h"
 
 namespace ComboRendering
 {
@@ -34,7 +35,8 @@ namespace ComboRendering
     void RemoveMesh(Mesh *mesh);
     void Update();
     std::string SaveMeshes(std::string fileName);
-    ChopperEngine::MeshInfoPtr SliceMeshes(std::string fileName);
+    ChopperEngine::MeshInfoPtr SliceMeshes(ChopperEngine::Progressor::ProgressCallback callback,
+                                           const void *callbackContext);
 
     void TestMouseIntersection(float x, float y);
 
