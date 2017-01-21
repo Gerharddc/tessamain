@@ -37,8 +37,8 @@ static void CheckTempLoop()
 
 Printer::Printer(QObject *parent) : QObject(parent)
 {
-    TempThread = std::thread(CheckTempLoop);
-    TempThread.detach();
+    //TempThread = std::thread(CheckTempLoop);
+    //TempThread.detach();
 
     // Set the fan gpio to output
     std::ofstream dir("/sys/class/gpio/gpio146/direction");
@@ -97,6 +97,9 @@ void Printer::Connect()
         serial->waitForReadyRead(1000);
         qDebug() << serial->readAll();
         qDebug() << "Opened";
+
+        TempThread = std::thread(CheckTempLoop);
+        TempThread.detach();
     }
     else
         qDebug() << "Couldn't open serial";
