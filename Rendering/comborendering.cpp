@@ -215,6 +215,7 @@ std::string ComboRendering::SaveMeshes(std::string fileName)
 ChopperEngine::MeshInfoPtr ComboRendering::SliceMeshes(std::string fileName)
 {
     // TODO: slice all meshes
+    STLRendering::PrepMeshesSave(stlMeshes);
     auto mip = ChopperEngine::SliceMesh(stlMeshes.begin().operator *());
 
     // TODO: implement dialog or something to request save
