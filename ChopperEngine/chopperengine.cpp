@@ -33,7 +33,7 @@ void ChopperEngine::SlicerLog(std::string message)
     if (slicerLogger != nullptr)
         slicerLogger(message);
 
-    std::cout << message << std::endl;
+    //std::cout << message << std::endl;
 }
 
 static inline void getTrigPointFloats(Triangle &trig, double *arr, uint8_t pnt, MeshInfoPtr mip)
@@ -73,10 +73,14 @@ static inline Triangle &TrigAtIdx(std::size_t idx, MeshInfoPtr mip)
 // is reasonable and only returns when all have finished
 // The functions need to run on data between two indices
 // and toggle a flag when done
-typedef void(*MultiFunction)(std::size_t, std::size_t, bool*, MeshInfoPtr);
+typedef void(*MultiFunction)(std::size_t, std::size_t, bool*, MeshInfoPtr, Progressor&);
 static void MultiRunFunction(MultiFunction function,
-                             std::size_t startIdx, std::size_t endIdx, MeshInfoPtr mip)
+                             std::size_t startIdx, std::size_t endIdx,
+                             MeshInfoPtr mip, Progressor &prog)
 {
+    // Notify the progressor we are starting another step
+    prog.StartNextStep(endIdx - startIdx);
+
     cInt idsLeft = endIdx - startIdx + 1;
     std::size_t lastIdx = 0;
 
@@ -100,7 +104,7 @@ static void MultiRunFunction(MultiFunction function,
     while (idsLeft > 0 && threadCount < cores)
     {
         threads[threadCount] = std::thread(function, lastIdx, std::min(endIdx, lastIdx + blockSize),
-                                           &(doneFlags[threadCount]), mip);
+                                           &(doneFlags[threadCount]), mip, std::ref(prog));
         lastIdx += blockSize;
         idsLeft -= blockSize;
         threadCount++;
@@ -131,7 +135,7 @@ static void MultiRunFunction(MultiFunction function,
                     threads[i].join();
 
                     threads[i] = std::thread(function, lastIdx, std::min(endIdx, lastIdx + blockSize),
-                                             &(doneFlags[threadCount]), mip);
+                                             &(doneFlags[threadCount]), mip, std::ref(prog));
                     lastIdx += blockSize;
                     idsLeft -= blockSize;
                     threadCount++;
@@ -161,7 +165,8 @@ static void MultiRunFunction(MultiFunction function,
         threads[i].join();
 }
 
-static void SliceTrigsToLayersMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
+static void SliceTrigsToLayersMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag,
+                                 MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog(std::string("Slicing trigs: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -279,16 +284,18 @@ static void SliceTrigsToLayersMF(std::size_t startIdx, std::size_t endIdx, bool*
                 }
             }
         }
+
+        prog.CompleteStepPart();
     }
 
     *doneFlag = true;
 }
 
-static inline void SliceTrigsToLayers(MeshInfoPtr mip)
+static inline void SliceTrigsToLayers(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Slicing triangles into layers");
 
-    MultiRunFunction(SliceTrigsToLayersMF, 0, mip->layerCount, mip);
+    MultiRunFunction(SliceTrigsToLayersMF, 0, mip->layerCount, mip, prog);
 }
 
 static inline long SquaredDist(const IntPoint& p1, const IntPoint& p2)
@@ -416,7 +423,8 @@ static inline void OptimizePaths(Paths& paths)
     }
 }
 
-static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
+static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag,
+                                               MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog(std::string("Calculating islands: ") + std::to_string(startIdx)
               + std::string(" to ") + std::to_string(endIdx));
@@ -668,19 +676,22 @@ static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t
 
         // Optimize memory usage
         layerComp.islandList.shrink_to_fit();
+
+        prog.CompleteStepPart();
     }
 
     *doneFlag = true;
 }
 
-static inline void CalculateIslandsFromInitialLines(MeshInfoPtr mip)
+static inline void CalculateIslandsFromInitialLines(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Calculating initial islands");
 
-    MultiRunFunction(CalculateIslandsFromInitialLinesMF, 0, mip->layerCount, mip);
+    MultiRunFunction(CalculateIslandsFromInitialLinesMF, 0, mip->layerCount, mip, prog);
 }
 
-static void GenerateOutlineSegmentsMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
+static void GenerateOutlineSegmentsMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag,
+                                      MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog(std::string("Outline: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -726,12 +737,14 @@ static void GenerateOutlineSegmentsMF(std::size_t startIdx, std::size_t endIdx, 
             offset.AddPaths(outline, JoinType::jtMiter, EndType::etClosedPolygon);
             offset.Execute(isle.outlinePaths, NozzleWidth * scaleFactor);
         }
+
+        prog.CompleteStepPart();
     }
 
     *doneFlag = true;
 }
 
-static inline void GenerateOutlineSegments(MeshInfoPtr mip)
+static inline void GenerateOutlineSegments(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Generating outline segments");
 
@@ -739,7 +752,7 @@ static inline void GenerateOutlineSegments(MeshInfoPtr mip)
     if (GlobalSettings::ShellThickness.Get() < 1)
         return;
 
-    MultiRunFunction(GenerateOutlineSegmentsMF, 0, mip->layerCount, mip);
+    MultiRunFunction(GenerateOutlineSegmentsMF, 0, mip->layerCount, mip, prog);
 }
 
 std::unordered_map<float, cInt> densityDividers;
@@ -770,7 +783,7 @@ static inline void CalculateDensityDividers()
     CalculateDensityDivider(10.0f);
 }
 
-static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
+static inline void CalculateTopBottomSegments(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Calculating top and bottom segments");
 
@@ -781,7 +794,14 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
 
     // We can run the top and bottom segment generation in 2 threads because they are independant
 
-    std::thread topThread([=]()
+    // Determine how many layers have to be done
+    int workParts = (mip->layerCount - tBCount) - 1;
+    workParts += (mip->layerCount - 1) - (mip->layerCount - tBCount - 1);
+    workParts += (mip->layerCount - 2) - (tBCount - 1);
+    workParts += tBCount;
+    prog.StartNextStep(workParts);
+
+    std::thread topThread([&]()
     {
         // To calculate the top segments we need to go from the bottom up,
         // take each island as a subject, take the outline of the above layer
@@ -854,6 +874,8 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
                     else
                         isle.segments.pop_back();
                 }
+
+                prog.CompleteStepPart();
             }
 
             for (std::size_t i = mip->layerCount - 1; i > mip->layerCount - tBCount - 1; i--)
@@ -870,11 +892,13 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
                     // Extrude more for a bridge
                     topSegment.infillMultiplier = 2.0f;
                 }
+
+                prog.CompleteStepPart();
             }
         }
     });
 
-    std::thread bottomThread([=](){
+    std::thread bottomThread([&](){
         // To calculate the bottom segments we need to go from the top down,
         // take each island as a subject, take the outline of the layer below
         // as a clipper and perform a difference operation. The result will
@@ -947,6 +971,8 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
                     else
                         isle.segments.pop_back();
                 }
+
+                prog.CompleteStepPart();
             }
 
             // Every island in the bottom layer is obviously a bottom segment
@@ -961,6 +987,8 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
                     // Initial bottom segments should not be bridges
                     bottomSegment.segmentSpeed = GlobalSettings::InfillSpeed.Get();
                 }
+
+                prog.CompleteStepPart();
             }
         }
     });
@@ -970,7 +998,8 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip)
     bottomThread.join();
 }
 
-static void CalculateInfillSegmentsMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
+static void CalculateInfillSegmentsMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag,
+                                      MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog(std::string("Infill: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -1007,25 +1036,27 @@ static void CalculateInfillSegmentsMF(std::size_t startIdx, std::size_t endIdx, 
             // We then need to perform a difference operation to determine the infill segments
             clipper.Execute(ClipType::ctDifference, infillSeg.outlinePaths);
         }
+
+        prog.CompleteStepPart();
     }
 
     *doneFlag = true;
 }
 
-static inline void CalculateInfillSegments(MeshInfoPtr mip)
+static inline void CalculateInfillSegments(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Calculating infill segments");
 
-    MultiRunFunction(CalculateInfillSegmentsMF, 0, mip->layerCount, mip);
+    MultiRunFunction(CalculateInfillSegmentsMF, 0, mip->layerCount, mip, prog);
 }
 
-static inline void CalculateSupportSegments(MeshInfoPtr mip)
+static inline void CalculateSupportSegments(MeshInfoPtr mip, Progressor &prog)
 {
     // TODO: implement this
 }
 
 #ifdef COMBINE_INFILL
-static inline void CombineInfillSegments(MeshInfoPtr mip)
+static inline void CombineInfillSegments(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Combining infill segments");
 
@@ -1142,13 +1173,13 @@ static inline void CombineInfillSegments(MeshInfoPtr mip)
 }
 #endif
 
-static inline void GenerateRaft(MeshInfoPtr mip)
+static inline void GenerateRaft(MeshInfoPtr mip, Progressor &prog)
 {
     // TODO: implement this
     SlicerLog("Generating raft");
 }
 
-static inline void GenerateSkirt(MeshInfoPtr mip)
+static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
 {
     //  TODO: implement this
     SlicerLog("Generating skirt");
@@ -1384,7 +1415,8 @@ static void FillInPaths(const Paths &outlines, std::vector<LineSegment> &infillL
     }
 }
 
-static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
+static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag,
+                         MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog(std::string("Trim infill: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -1432,16 +1464,18 @@ static void TrimInfillMF(std::size_t startIdx, std::size_t endIdx, bool* doneFla
         }
 
         right = !right;
+
+        prog.CompleteStepPart();
     }
 
     *doneFlag = true;
 }
 
-static inline void TrimInfill(MeshInfoPtr mip)
+static inline void TrimInfill(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Trimming infill");
 
-    MultiRunFunction(TrimInfillMF, 0, mip->layerCount, mip);
+    MultiRunFunction(TrimInfillMF, 0, mip->layerCount, mip, prog);
 }
 
 const cInt MoveHigher = scaleFactor / 10;
@@ -1715,7 +1749,8 @@ static void ExtrudeLine(const std::size_t lineIdx, IntPoint &lastPoint, const cI
 
 static IntPoint *LayerLastPoints;
 
-static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag, MeshInfoPtr mip)
+static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* doneFlag,
+                                MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog(std::string("Toolpath: ") + std::to_string(startIdx) + std::string(" to ") + std::to_string(endIdx));
 
@@ -1865,18 +1900,20 @@ static void CalculateToolpathMF(std::size_t startIdx, std::size_t endIdx, bool* 
         delete[] islesUsed;
 
         LayerLastPoints[i] = lastPoint;
+
+        prog.CompleteStepPart();
     }
 
     *doneFlag = true;
 }
 
-static inline void CalculateToolpath(MeshInfoPtr mip)
+static inline void CalculateToolpath(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Calculating toolpath");
 
     LayerLastPoints = new IntPoint[mip->layerCount];
 
-    MultiRunFunction(CalculateToolpathMF, 0, mip->layerCount, mip);
+    MultiRunFunction(CalculateToolpathMF, 0, mip->layerCount, mip, prog);
 
     // Adjust the starting position of each layer to the end of the last one
     for (std::size_t i = 1; i < mip->layerCount; i++)
@@ -2074,18 +2111,24 @@ void ChopperEngine::WriteMeshGcode(std::string outFilePath, MeshInfoPtr mip)
     os.close();
 }
 
+static void PrintCallback(float prog)
+{
+    std::cout << "Progress: " << prog << std::endl;
+}
+
 MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
 {
     MeshInfoPtr mip = std::make_shared<MeshInfo>(inputMesh);
+    Progressor prog = Progressor(7, &PrintCallback);
 
     // Slice the triangles into layers
-    SliceTrigsToLayers(mip);
+    SliceTrigsToLayers(mip, prog); // Step 1
 
     // Calculate islands from the original lines
-    CalculateIslandsFromInitialLines(mip);
+    CalculateIslandsFromInitialLines(mip, prog); // Step 2
 
     // Generate the outline segments
-    GenerateOutlineSegments(mip);
+    GenerateOutlineSegments(mip, prog); // Step 3
 
     // Generate the infill grids
     CalculateDensityDividers();
@@ -2093,30 +2136,30 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh)
     // The top and bottom segments need to calculated before
     // the infill outlines otherwise the infill will be seen as top or bottom
     // Calculate the top and bottom segments
-    CalculateTopBottomSegments(mip);
+    CalculateTopBottomSegments(mip, prog); // Step 4
 
     // Calculate the infill segments
-    CalculateInfillSegments(mip);
+    CalculateInfillSegments(mip, prog); // Step 5
 
     // Calculate the support segments
-    CalculateSupportSegments(mip);
+    CalculateSupportSegments(mip, prog);
 
 #ifdef COMBINE_INFILL
     // Combine the infill segments
-    CombineInfillSegments(mip);
+    CombineInfillSegments(mip, prog);
 #endif
 
     // Generate a raft
-    GenerateRaft(mip);
+    GenerateRaft(mip, prog);
 
     // Generate a skirt
-    GenerateSkirt(mip);
+    GenerateSkirt(mip, prog);
 
     // Tim the infill grids to fit the segments
-    TrimInfill(mip);
+    TrimInfill(mip, prog); // Step 7
 
     // Calculate the toolpath
-    CalculateToolpath(mip);
+    CalculateToolpath(mip, prog); // Step 8
 
     return mip;
 }
@@ -2371,4 +2414,35 @@ std::string LineWriter::ReadNextLine()
 bool LineWriter::HasLineToRead() const
 {
     return !(done && stringBuf.empty());
+}
+
+void Progressor::StartNextStep(std::size_t stepParts)
+{
+    stepsDone++;
+    stepParts_ = stepParts;
+    partsDone = 0;
+
+    changeCallback_(CalculateProgress());
+}
+
+void Progressor::CompleteStepPart()
+{
+    partsDone++;
+
+    changeCallback_(CalculateProgress());
+}
+
+float Progressor::CalculateProgress()
+{
+    if (stepsCount_ == 0)
+        return 100.0f;
+    else
+    {
+        float progress = ((float)stepsDone / (float)stepsCount_) * 100.0f;
+
+        if (stepParts_ != 0)
+            progress += (1 / (float)stepsCount_) * ((float)partsDone / (float)stepParts_) * 100.0f;
+
+        return progress;
+    }
 }
