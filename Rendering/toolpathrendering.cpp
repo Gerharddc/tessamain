@@ -6,8 +6,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <thread>
 #include <iostream>
-#include <time.h>
 #include <vector>
+#include <chrono>
 
 #include "glhelper.h"
 #include "mathhelper.h"
@@ -66,20 +66,34 @@ static float opacity = 1.0f;
 // if it has been idle for long enough.
 
 static volatile bool complexify = false;
+static volatile bool forceFullDraw = false;
+static volatile std::size_t drawToChunk = 0;
+static volatile bool chunkDrawCap = false;
+static volatile bool lastSimple = false;
 
-static clock_t lastDrawTime = clock();
+using namespace std::chrono;
+
+static steady_clock::time_point lastDrawTime = steady_clock::now();
 
 static void checkComplexify()
 {
     while (true)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(milliseconds(500));
 
         if (complexify)
         {
-            lastDrawTime = clock();
-            ComboRendering::Update();
-            complexify = false;
+            steady_clock::time_point now = steady_clock::now();
+            std::size_t delta = duration_cast<milliseconds>(now - lastDrawTime).count();
+
+            if (delta > 500)
+            {
+                lastDrawTime = now;
+                complexify = false;
+                chunkDrawCap = false;
+                forceFullDraw = true;
+                ComboRendering::Update();
+            }
         }
     }
 }
@@ -278,16 +292,21 @@ void ToolpathRendering::Draw()
         curPrintToLine = targetPrintToLine;
     }
 
-    clock_t now = clock();
-    clock_t deltaTicks = now - lastDrawTime;
-    clock_t fps = 0;
-    if (deltaTicks > 0)
-        fps = CLOCKS_PER_SEC / deltaTicks / 4.0; // Not sure why 4
-    //std::cout << "FPS: " << fps << std::endl;
-    lastDrawTime = now;
-    bool simpleDraw = (fps < 30.0);
-
     std::size_t target = (printToChunk != -1) ? printToChunk + 1 : groupCount;
+
+    // Avoid div by zero and time wasting
+    if (target == 0)
+        return;
+
+    const std::size_t maxFrameMicros = 1000000 / 45;
+    const std::size_t maxChunkMicros = maxFrameMicros / target;
+
+    lastDrawTime = steady_clock::now();
+    std::size_t frameTime = 0;
+
+    if (chunkDrawCap && (drawToChunk < target))
+        target = drawToChunk;
+
     for (std::size_t i = 0; i < target; i++)
     {
         GroupGLData *ld = groupDatas + i;
@@ -314,11 +333,33 @@ void ToolpathRendering::Draw()
         // or maybe rather use the extrusion diameter
         glUniform1f(mRadiusUniformLocation, 0.225f); // Almost half 0.5f       
 
+        steady_clock::time_point now = steady_clock::now();
+        std::size_t delta = duration_cast<microseconds>(now - lastDrawTime).count();
+        frameTime += delta;
+        lastDrawTime = steady_clock::now();
+
+        bool simpleDraw = false;
+        if (!forceFullDraw)
+        {
+            if (frameTime > maxFrameMicros)
+            {
+                chunkDrawCap = true;
+                drawToChunk = i;
+                complexify = true;
+                lastSimple = true;
+
+                return;
+            }
+            else if (lastSimple || (delta > maxChunkMicros))
+                simpleDraw = true;
+        }
+
         if (simpleDraw)
         {
             glUniform1i(mLineOnlyUnformLocation, true);
             glDrawElements(GL_LINES, (i == target - 1 && printToChunk != -1) ? printToLineIdx : ld->lineIdxCount, GL_UNSIGNED_SHORT, ld->lineIdxs);
             complexify = true;
+            lastSimple = true;
         }
         else
         {
@@ -326,6 +367,8 @@ void ToolpathRendering::Draw()
             glDrawElements(GL_TRIANGLES, (i == target - 1 && printToChunk != -1) ? printToIdx : ld->idxCount, GL_UNSIGNED_SHORT, ld->indices);
         }
     }
+
+    forceFullDraw = false;
 }
 
 void ToolpathRendering::SetOpacity(float alpha)
