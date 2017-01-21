@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 
 #include "Misc/globalsettings.h"
 #include "clipper.hpp"
@@ -104,6 +105,32 @@ static void MultiRunFunction(MultiFunction function,
         threadCount++;
     }
 
+    // TODO: Implement non wait based thread management
+
+    /*std::condition_variable cv;
+    std::mutex mtx;
+
+    while (idsLeft > 0)
+    {
+        // Determine how many threads are active
+        threadCount = 0;
+        for (unsigned int i = 0; i < cores; i++)
+        {
+            if (!doneFlags[i])
+                threadCount++;
+        }
+
+        // wait for a thread to finish if needed
+        if (threadCount < cores)
+        {
+        }
+        else
+        {
+            std::unique_lock<std::mutex> lck(mtx);
+            cv.wait(lck);
+        }
+    }*/
+
     auto sleepTime = std::chrono::milliseconds(50);
     // Respawn threads with new data until we have processed everything
     while (threadCount > 0)
@@ -148,7 +175,7 @@ static void MultiRunFunction(MultiFunction function,
         if (threadCount > 0)
         {
             if (sleepTime == std::chrono::milliseconds(0))
-                std::chrono::milliseconds(50);
+                sleepTime = std::chrono::milliseconds(50);
 
             std::this_thread::sleep_for(sleepTime);
         }
