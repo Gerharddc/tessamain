@@ -28,7 +28,7 @@ void ChopperEngine::SlicerLog(std::string message)
     if (slicerLogger != nullptr)
         slicerLogger(message);
 
-    //std::cout << message << std::endl;
+    std::cout << message << std::endl;
 }
 
 static inline void getTrigPointFloats(Triangle &trig, double *arr, uint8_t pnt, MeshInfoPtr mip)
@@ -1224,6 +1224,8 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
     if (GlobalSettings::SkirtLineCount.Get() == 0)
         return;
 
+    prog.StartNextStep(2 + GlobalSettings::SkirtLineCount.Get());
+
     Paths comboOutline;
     Clipper clipper;
 
@@ -1231,6 +1233,7 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
         clipper.AddPaths(isle.outlinePaths, PolyType::ptSubject, true);
 
     clipper.Execute(ClipType::ctUnion, comboOutline);
+    prog.CompleteStepPart();
 
     IntPoint lastP(0, 0);
     auto &segs = mip->layerComponents[0].skirtSegments;
@@ -1241,6 +1244,7 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
 
     offset.AddPaths(comboOutline, JoinType::jtRound, EndType::etClosedPolygon);
     offset.Execute(comboOutline, GlobalSettings::SkirtDistance.Get() * scaleFactor);
+    prog.CompleteStepPart();
 
     for (int a = 0; a < GlobalSettings::SkirtLineCount.Get(); a++)
     {
@@ -1259,6 +1263,8 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
             lastP = path.back();
             segs.emplace<ExtrudeSegment>(lastP, path[0], 0, 10);
         }
+
+        prog.CompleteStepPart();
     }
 }
 
@@ -2006,7 +2012,7 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh, Progressor::ProgressCallba
                                      const void *callbackContext)
 {
     MeshInfoPtr mip = std::make_shared<MeshInfo>(inputMesh);
-    Progressor prog = Progressor(7, callback, callbackContext);
+    Progressor prog = Progressor(8, callback, callbackContext);
 
     // Slice the triangles into layers
     SliceTrigsToLayers(mip, prog); // Step 1
@@ -2040,7 +2046,7 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh, Progressor::ProgressCallba
     GenerateRaft(mip, prog);
 
     // Generate a skirt
-    GenerateSkirt(mip, prog);
+    //GenerateSkirt(mip, prog); // Step 6
 
     // Tim the infill grids to fit the segments
     TrimInfill(mip, prog); // Step 7

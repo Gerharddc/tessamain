@@ -5,8 +5,10 @@
 #include <QSerialPort>
 #include <QSerialPortInfo>
 #include <QDebug>
+
 #include "Rendering/comborendering.h"
 #include "Rendering/toolpathrendering.h"
+#include "ChopperEngine/linewriter.h"
 
 // Global singleton printer
 Printer GlobalPrinter;
@@ -86,7 +88,7 @@ Printer::~Printer()
 void Printer::Connect()
 {
     //serial = new QSerialPort("rfcomm0");
-    serial = new QSerialPort("ttyAMA0s");
+    serial = new QSerialPort("ttyAMA0");
     //serial->setBaudRate(9600);
     serial->setBaudRate(57600);
 
@@ -125,7 +127,7 @@ void Printer::readPrinterOutput()
             }
         }
 
-        //qDebug() << line;
+        //qDebug() << "Read: " << line;
     }
 }
 
@@ -168,91 +170,78 @@ float Printer::percentDone()
     return (float)((m_totalTime - m_timeLeft) / m_totalTime * 100.0);
 }
 
-static void PrintFile(std::string path)
+static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
 {
-    std::ifstream is(path);
+    ChopperEngine::LineWriter lw(_mip);
 
-    if (is)
+    // TODO:
+    // implement partial render and eta
+
+    int64_t lineNum = 0;
+    while (lw.HasLineToRead() && !StopPrintThread)
     {
-        m_totalTime = ComboRendering::getToolpath()->totalMillis;
-        m_timeLeft = m_totalTime;
-        emit GlobalPrinter.etaChanged();
-        emit GlobalPrinter.percentDoneChanged();
-
-        std::string line;
-        int64_t lineNum = 0;
-        while (std::getline(is, line) && !StopPrintThread)
+        if (serial != nullptr )//&& serial->isOpen())
         {
+            GCode line = lw.ReadNextLine();
             lineNum++;
 
-            if (serial != nullptr )//&& serial->isOpen())
+            // Check for any target temperature commands
+            if (line.hasM() && (line.getM() == 104 || line.getM() == 109))
             {
-                // TODO: check for legal numbers two
-                if (line[0] != 'G' && line[0] != 'M')
-                    continue;
+                if (line.hasS())
+                    GlobalPrinter.SignalTargetTemp(line.getS());
+            }
 
-                // Check for any target temperature commands
-                if (line.find("M104 S") != std::string::npos || line.find("M109 S") != std::string::npos)
-                    GlobalPrinter.SignalTargetTemp(std::stof(line.substr(line.find('S') + 1)));
+            // Check for fan commands if autofanning
+            if (GlobalPrinter.autoFan() && line.hasM())
+            {
+                if (line.getM() == 106)
+                    GlobalPrinter.setFanning(true);
+                else if (line.getM() == 107)
+                    GlobalPrinter.setFanning(false);
+            }
 
-                // Check for fan commands if autofanning
-                if (GlobalPrinter.autoFan())
+            if (serial->isOpen())
+            {
+                serial->write(QString::fromStdString(line.getAscii() + '\n').toUtf8());
+                serial->flush();
+
+                // wait for an ok before sending the next line
+                WaitForOk();
+
+                // Check if there is a temp request waiting
+                if (NeedTemp)
                 {
-                    if (line.find("M106") != std::string::npos)
-                        GlobalPrinter.setFanning(true);
-                    else if (line.find("M107") != std::string::npos)
-                        GlobalPrinter.setFanning(false);
-                }
-
-                if (serial->isOpen())
-                {
-                    serial->write((QString::fromStdString(line) + '\n').toUtf8());
-                    serial->flush();
-
+                    GlobalPrinter.sendCommand("M105");
                     // wait for an ok before sending the next line
                     WaitForOk();
-
-                    // Check if there is a temp request waiting
-                    if (NeedTemp)
-                    {
-                        GlobalPrinter.sendCommand("M105");
-                        // wait for an ok before sending the next line
-                        WaitForOk();
-                    }
                 }
-                else
-                {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                    //std::cout << "Serial not open for printing." << std::endl;
-                }
-                //std::cout << "Printed: " << line << std::endl;
-
-                // Update the progress indicators
-                ToolpathRendering::ShowPrintedToLine(lineNum);
-                m_timeLeft -= ComboRendering::getToolpath()->lineInfos[lineNum - 1].milliSecs;
-                emit GlobalPrinter.etaChanged();
-                emit GlobalPrinter.percentDoneChanged();
-                GlobalPrinter.UpdateProgressStatus();
             }
             else
             {
-                std::cout << "Serial port not open, print stopped" << std::endl;
-                goto close;
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                //std::cout << "Serial not open for printing." << std::endl;
             }
 
-            // Stall the thread while pausing but check for a complete stop
-            while (GlobalPrinter.paused() && !StopPrintThread)
-                std::this_thread::sleep_for(std::chrono::seconds(2));
+            // Update the progress indicators
+            /*ToolpathRendering::ShowPrintedToLine(lineNum);
+            m_timeLeft -= ComboRendering::getToolpath()->lineInfos[lineNum - 1].milliSecs;
+            emit GlobalPrinter.etaChanged();
+            emit GlobalPrinter.percentDoneChanged();
+            GlobalPrinter.UpdateProgressStatus();*/
         }
-    }
-    else
-    {
-        // TODO: report error
-        std::cout << "Could not open file for print";
+        else
+        {
+            std::cout << "Serial port not open, print stopped" << std::endl;
+            goto close;
+        }
+
+        // Stall the thread while pausing but check for a complete stop
+        while (GlobalPrinter.paused() && !StopPrintThread)
+            std::this_thread::sleep_for(std::chrono::seconds(2));
     }
 
     close:
-    is.close();
     GlobalPrinter.SignalPrintStop();
 
     // Stop the heater
@@ -280,7 +269,7 @@ void Printer::SignalPrintStop()
         emit statusChanged();
 
         // Reset the view
-        ToolpathRendering::ShowPrintedToLine(-1);
+        //TODO: ToolpathRendering::ShowPrintedToLine(-1);
 
         // Retract, home x & y, then z
         extrude(-15.0f);
@@ -291,13 +280,13 @@ void Printer::SignalPrintStop()
     }
 }
 
-void Printer::startPrint(QString path)
+void Printer::startPrint(ChopperEngine::MeshInfoPtr _mip)
 {
     if (m_printing)
         return;
 
     StopPrintThread = false;
-    PrintThread = std::thread(PrintFile, path.toStdString());
+    PrintThread = std::thread(PrintFile, _mip);
     PrintThread.detach();
     m_printing = true;
     emit printingChanged();

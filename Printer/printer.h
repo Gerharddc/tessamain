@@ -4,6 +4,8 @@
 #include <QObject>
 #include <QString>
 
+#include "ChopperEngine/meshinfo.h"
+
 class Printer : public QObject
 {
     Q_OBJECT
@@ -26,7 +28,7 @@ public:
     void sendCommand(QString cmd);
     void UpdateProgressStatus();
 
-    Q_INVOKABLE void startPrint(QString path);
+    Q_INVOKABLE void startPrint(const ChopperEngine::MeshInfoPtr _mip);
     Q_INVOKABLE void stopPrint();
     Q_INVOKABLE void pauseResume();
     Q_INVOKABLE void emergencyStop();

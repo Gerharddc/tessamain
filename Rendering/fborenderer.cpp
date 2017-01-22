@@ -334,7 +334,7 @@ QString FBORenderer::sliceMeshes()
         fbo->gcodePath = QString(stlName);
         fbo->gcodePath.replace(".stl", ".gcode");*/
 
-        auto mip = ComboRendering::SliceMeshes(&SlicerProgressCallback, (const void*)fbo);
+        fbo->curMip = ComboRendering::SliceMeshes(&SlicerProgressCallback, (const void*)fbo);
 
 //#define PRINT_GCODE_DEBUG
 #ifdef PRINT_GCODE_DEBUG
@@ -343,7 +343,7 @@ QString FBORenderer::sliceMeshes()
             std::cout << lw.ReadNextLine() << std::endl;
 #endif
 
-        QMetaObject::invokeMethod(fbo, "SlicerFinsihed", Q_ARG(ChopperEngine::MeshInfoPtr, mip));
+        QMetaObject::invokeMethod(fbo, "SlicerFinsihed", Q_ARG(ChopperEngine::MeshInfoPtr, fbo->curMip));
     }, this).detach();
 
     return "started";
@@ -354,7 +354,7 @@ QString FBORenderer::printToolpath()
     if (!toolPathLoaded())
         return "no tp loaded";
 
-    GlobalPrinter.startPrint(gcodePath);
+    GlobalPrinter.startPrint(curMip);
     return "started";
 }
 

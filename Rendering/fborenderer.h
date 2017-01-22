@@ -9,6 +9,7 @@
 
 #include "structures.h"
 #include "comborendering.h"
+#include "ChopperEngine/meshinfo.h"
 
 class FBORenderer : public QQuickFramebufferObject
 {
@@ -18,7 +19,7 @@ private:
     QString m_saveName = "Untitled";
     bool m_slicerRunning = false;
     QString m_slicerStatus = "Not running";
-    QString gcodePath = "";
+    ChopperEngine::MeshInfoPtr curMip;
     void EmitMeshProps();
 
 public:

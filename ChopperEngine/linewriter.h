@@ -29,11 +29,22 @@ namespace ChopperEngine
         void WriteLinesFunc();
         std::thread bufferThread;
 
+        void AddToolSegments(const PMCollection<ToolSegment> &toolSegments);
+
+        float currentE = 0.0f;
+        float prevX = 0.0f;
+        float prevY = 0.0f;
+        float prevZ = 0.0f;
+        int prev0F = 0;
+        int prev1F = 0;
+        bool retracted = false;
+
     public:
         LineWriter(const MeshInfoPtr _mip);
         ~LineWriter();
 
-        std::string ReadNextLine();
+        //std::string ReadNextLine();
+        GCode ReadNextLine();
         bool HasLineToRead() const;
     };
 }

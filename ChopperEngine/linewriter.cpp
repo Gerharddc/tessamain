@@ -4,16 +4,6 @@
 
 using namespace ChopperEngine;
 
-void LineWriter::WriteLinesFunc()
-{
-    float currentE = 0.0f;
-    float prevX = 0.0f;
-    float prevY = 0.0f;
-    float prevZ = 0.0f;
-    int prev0F = 0;
-    int prev1F = 0;
-    bool retracted = false;
-
 #define ADDGCODE(gcode) \
     { \
         std::lock_guard<std::mutex> lock(bufMtx); \
@@ -28,6 +18,110 @@ void LineWriter::WriteLinesFunc()
         gcode.setText(text); \
         ADDGCODE(gcode) \
     }
+
+void LineWriter::AddToolSegments(const PMCollection<ToolSegment> &toolSegments)
+{
+    for (ToolSegment *ts : toolSegments)
+    {
+        GCode gcode;
+
+        if (ts->type == ToolSegType::Retraction)
+        {
+            gcode.setG(1);
+            gcode.setE(currentE - (float)(((RetractSegment*)(ts))->distance / scaleFactor));
+
+            if (GlobalSettings::RetractionSpeed.Get() != prev1F)
+            {
+                prev1F = GlobalSettings::RetractionSpeed.Get();
+                gcode.setF(prev1F);
+            }
+
+            retracted = true;
+        }
+        else if (MovingSegment* ms = dynamic_cast<MovingSegment*>(ts))
+        {
+            if (ms->p1 == ms->p2)
+                continue;
+
+            if (ms->type == ToolSegType::Extruded)
+            {
+                gcode.setG(1);
+
+                // If the printhead has retracted then we first need to get it back at the correct e before continuing
+                if (retracted)
+                {
+                    gcode.setE(currentE);
+                    retracted = false;
+                }
+            }
+            else
+                gcode.setG(0);
+
+            float newX = (float)(ms->p2.X / scaleFactor);
+            float newY = (float)(ms->p2.Y / scaleFactor);
+            float newZ = (float)(ms->p2.Z / scaleFactor);
+
+            if (newX != prevX)
+            {
+                prevX = newX;
+                gcode.setX(prevX);
+            }
+
+            if (newY != prevY)
+            {
+                prevY = newY;
+                gcode.setY(prevY);
+            }
+
+            if (newZ != prevZ)
+            {
+                prevZ = newZ;
+                gcode.setZ(prevZ);
+            }
+
+            if (ms->type == ToolSegType::Extruded)
+            {
+                ExtrudeSegment *es = (ExtrudeSegment*)(ms);
+
+                // The e position should always change so there is no need to check if it changed
+                currentE += es->ExtrusionDistance(); // *layer.InfillMulti
+
+                gcode.setE(currentE);
+
+                if (ms->speed != prev1F)
+                {
+                    prev1F = ms->speed;
+                    gcode.setF(prev1F);
+                }
+            }
+            else
+            {
+                if (ms->speed != prev0F)
+                {
+                    prev0F = ms->speed;
+                    gcode.setF(prev0F);
+                }
+            }
+        }
+        else
+        {
+            std::cout << "Trying to write unsupported segment to gcode." << std::endl;
+            ADDLINE("; Unknown type: " + std::to_string((int)ts->type));
+        }
+
+        ADDGCODE(gcode);
+    }
+}
+
+void LineWriter::WriteLinesFunc()
+{
+    currentE = 0.0f;
+    prevX = 0.0f;
+    prevY = 0.0f;
+    prevZ = 0.0f;
+    prev0F = 0;
+    prev1F = 0;
+    retracted = false;
 
     ADDLINE(";Total amount of layers: " + std::to_string(mip->layerCount));
     ADDLINE(";Estimated time: " + std::to_string(0)); // TODO
@@ -69,6 +163,9 @@ void LineWriter::WriteLinesFunc()
     {
         const LayerComponent &layer = mip->layerComponents[layerNum];
         ADDLINE(";Layer: " + std::to_string(layerNum));
+
+        if (layer.hasSkirt)
+            AddToolSegments(layer.skirtSegments);
 
         for (const TravelSegment &move : layer.initialLayerMoves)
         {
@@ -115,96 +212,7 @@ void LineWriter::WriteLinesFunc()
                 // TODO: write segment type name
                 ADDLINE(";Segment: " + std::to_string((int)seg->type));
 
-                for (ToolSegment *ts : seg->toolSegments)
-                {
-                    GCode gcode;
-
-                    if (ts->type == ToolSegType::Retraction)
-                    {
-                        gcode.setG(1);
-                        gcode.setE(currentE - (float)(((RetractSegment*)(ts))->distance / scaleFactor));
-
-                        if (GlobalSettings::RetractionSpeed.Get() != prev1F)
-                        {
-                            prev1F = GlobalSettings::RetractionSpeed.Get();
-                            gcode.setF(prev1F);
-                        }
-
-                        retracted = true;
-                    }
-                    else if (MovingSegment* ms = dynamic_cast<MovingSegment*>(ts))
-                    {
-                        if (ms->p1 == ms->p2)
-                            continue;
-
-                        if (ms->type == ToolSegType::Extruded)
-                        {
-                            gcode.setG(1);
-
-                            // If the printhead has retracted then we first need to get it back at the correct e before continuing
-                            if (retracted)
-                            {
-                                gcode.setE(currentE);
-                                retracted = false;
-                            }
-                        }
-                        else
-                            gcode.setG(0);
-
-                        float newX = (float)(ms->p2.X / scaleFactor);
-                        float newY = (float)(ms->p2.Y / scaleFactor);
-                        float newZ = (float)(ms->p2.Z / scaleFactor);
-
-                        if (newX != prevX)
-                        {
-                            prevX = newX;
-                            gcode.setX(prevX);
-                        }
-
-                        if (newY != prevY)
-                        {
-                            prevY = newY;
-                            gcode.setY(prevY);
-                        }
-
-                        if (newZ != prevZ)
-                        {
-                            prevZ = newZ;
-                            gcode.setZ(prevZ);
-                        }
-
-                        if (ms->type == ToolSegType::Extruded)
-                        {
-                            ExtrudeSegment *es = (ExtrudeSegment*)(ms);
-
-                            // The e position should always change so there is no need to check if it changed
-                            currentE += es->ExtrusionDistance(); // *layer.InfillMulti
-
-                            gcode.setE(currentE);
-
-                            if (ms->speed != prev1F)
-                            {
-                                prev1F = ms->speed;
-                                gcode.setF(prev1F);
-                            }
-                        }
-                        else
-                        {
-                            if (ms->speed != prev0F)
-                            {
-                                prev0F = ms->speed;
-                                gcode.setF(prev0F);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        std::cout << "Trying to write unsupported segment to gcode." << std::endl;
-                        ADDLINE("; Unknown type: " + std::to_string((int)ts->type));
-                    }
-
-                    ADDGCODE(gcode);
-                }
+                AddToolSegments(seg->toolSegments);
             }
         }
     }
@@ -261,7 +269,7 @@ LineWriter::~LineWriter()
         bufferThread.join();
 }
 
-std::string LineWriter::ReadNextLine()
+GCode LineWriter::ReadNextLine()
 {
     // Wait for the buffer to get a line if needed
     if (!done && gcodeBuf.empty())
@@ -282,7 +290,7 @@ std::string LineWriter::ReadNextLine()
     // Tell the buffering thread that space has opened
     cv.notify_all();
 
-    return gcode.getAscii();
+    return gcode;//.getAscii();
 }
 
 bool LineWriter::HasLineToRead() const
