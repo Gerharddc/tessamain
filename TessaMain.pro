@@ -22,7 +22,6 @@ SOURCES += main.cpp \
     Rendering/toolpathrendering.cpp \
     Keyboard/keyboard.cpp \
     Printer/printer.cpp \
-    ChopperEngine/toolpath.cpp \
     ChopperEngine/mesh.cpp \
     ChopperEngine/progressor.cpp \
     ChopperEngine/linewriter.cpp

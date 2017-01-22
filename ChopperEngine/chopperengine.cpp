@@ -321,7 +321,9 @@ static inline void SliceTrigsToLayers(MeshInfoPtr mip, Progressor &prog)
 
 static inline long SquaredDist(const IntPoint& p1, const IntPoint& p2)
 {
-    return std::pow(p2.X - p1.X, 2) + std::pow(p2.Y - p1.Y, 2);
+    long a = p2.X - p1.X;
+    long b = p2.Y - p1.Y;
+    return (a*a) + (b*b);
 }
 
 static void ProcessPolyNode(PolyNode *pNode, std::vector<LayerIsland> &isleList)
@@ -372,7 +374,7 @@ static bool InALine(const IntPoint &p1, const IntPoint &p2, const IntPoint &p3)
         return true;
 }
 
-static inline void OptimizePaths(Paths& paths)
+static void OptimizePaths(Paths& paths)
 {
     for (std::size_t i = 0; i < paths.size(); i++)
     {
@@ -679,6 +681,7 @@ static void CalculateIslandsFromInitialLinesMF(std::size_t startIdx, std::size_t
             }
         }
 
+//#define TEST_NO_OPTIMIZE
 #ifndef TEST_NO_OPTIMIZE
         OptimizePaths(closedPaths);
 #endif
@@ -779,7 +782,7 @@ static inline void GenerateOutlineSegments(MeshInfoPtr mip, Progressor &prog)
 std::unordered_map<float, cInt> densityDividers;
 
 static void CalculateDensityDivider(float density)
-{   
+{
     // Calculate the needed spacing
 
     // d% = 1 / (x% + 1)
@@ -1202,8 +1205,47 @@ static inline void GenerateRaft(MeshInfoPtr mip, Progressor &prog)
 
 static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
 {
-    //  TODO: implement this
     SlicerLog("Generating skirt");
+
+    // TODO: add skirt as a normal island
+
+    if (GlobalSettings::SkirtLineCount.Get() == 0)
+        return;
+
+    Paths comboOutline;
+    Clipper clipper;
+
+    for (const LayerIsland &isle : mip->layerComponents[0].islandList)
+        clipper.AddPaths(isle.outlinePaths, PolyType::ptSubject, true);
+
+    clipper.Execute(ClipType::ctUnion, comboOutline);
+
+    IntPoint lastP(0, 0);
+    auto &segs = mip->layerComponents[0].skirtSegments;
+    mip->layerComponents[0].hasSkirt = true;
+    ClipperOffset offset;
+
+    offset.AddPaths(comboOutline, JoinType::jtRound, EndType::etClosedPolygon);
+    offset.Execute(comboOutline, GlobalSettings::SkirtDistance.Get() * scaleFactor);
+
+    for (int a = 0; a < GlobalSettings::SkirtLineCount.Get(); a++)
+    {
+        offset.Clear();
+
+        offset.AddPaths(comboOutline, JoinType::jtRound, EndType::etClosedPolygon);
+        offset.Execute(comboOutline, NozzleWidth * scaleFactor);
+
+        for (Path path : comboOutline)
+        {
+            segs.emplace<TravelSegment>(lastP, path.front(), 0, 100);
+
+            for (std::size_t i = 0; i < (path.size() - 1); i++)
+                segs.emplace<ExtrudeSegment>(path[i], path[i + 1], 0, 10);
+
+            lastP = path.back();
+            segs.emplace<ExtrudeSegment>(lastP, path[0], 0, 10);
+        }
+    }
 }
 
 struct SectPoint
@@ -1377,7 +1419,7 @@ static void FillInPaths(const Paths &outlines, std::vector<LineSegment> &infillL
 
                 cInt xVal = leftP.X + (cInt)(xPerc * xRise);
                 cInt yVal = leftP.Y + (cInt)(xPerc * yRise);
-                sectMap[idx].emplace_back(xVal, yVal, &path);               
+                sectMap[idx].emplace_back(xVal, yVal, &path);
             }
         }
     }

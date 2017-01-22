@@ -75,8 +75,31 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
         std::vector<PointIsle> pIsles;
         pIsles.reserve(layer.islandList.size());
 
-        for (const LayerIsland &isle : layer.islandList)
+        // TODO: render skirt as normal piece
+        if (layer.hasSkirt)
         {
+            bool started = false;
+
+            for (ToolSegment *ts : layer.skirtSegments)
+            {
+                if (MovingSegment *ms = static_cast<MovingSegment*>(ts))
+                {
+                    if (ms->type == ToolSegType::Travel)
+                    {
+                         pIsles.emplace_back();
+                         started = true;
+                    }
+
+                    if (started)
+                        pIsles.back().push_back(Point2(
+                                                    (double)(ms->p2.X) / scaleFactor,
+                                                    (double)(ms->p2.Y) / scaleFactor));
+                }
+            }
+        }
+
+        for (const LayerIsland &isle : layer.islandList)
+        {   
             for (const LayerSegment *seg : isle.segments)
             {
                 bool lastExtruded = false;

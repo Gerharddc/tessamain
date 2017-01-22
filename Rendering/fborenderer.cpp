@@ -15,6 +15,8 @@
 #include <iostream>
 #include <thread>
 
+#include "ChopperEngine/linewriter.h"
+
 class ComboFBORenderer : public QQuickFramebufferObject::Renderer
 {
 public:
@@ -333,6 +335,10 @@ QString FBORenderer::sliceMeshes()
         fbo->gcodePath.replace(".stl", ".gcode");*/
 
         auto mip = ComboRendering::SliceMeshes(&SlicerProgressCallback, (const void*)fbo);
+
+        //ChopperEngine::LineWriter lw(mip);
+        //while (lw.HasLineToRead())
+          //  std::cout << lw.ReadNextLine() << std::endl;
 
         QMetaObject::invokeMethod(fbo, "SlicerFinsihed", Q_ARG(ChopperEngine::MeshInfoPtr, mip));
     }, this).detach();

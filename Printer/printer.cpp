@@ -86,7 +86,7 @@ Printer::~Printer()
 void Printer::Connect()
 {
     //serial = new QSerialPort("rfcomm0");
-    serial = new QSerialPort("ttyHS2");
+    serial = new QSerialPort("ttyAMA0s");
     //serial->setBaudRate(9600);
     serial->setBaudRate(57600);
 

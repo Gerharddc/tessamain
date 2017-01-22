@@ -12,7 +12,7 @@
 using namespace ClipperLib;
 
 // Scale double to ints with this factor
-static double scaleFactor = 1000000.0;
+static double scaleFactor = 100000.0;
 const double PI = 3.14159265358979323846;
 const float NozzleWidth = 0.5f;
 const float FilamentWidth = 2.8f;
@@ -207,6 +207,9 @@ struct LayerComponent
     int layerSpeed = 100; // TODO
     int moveSpeed = 100; // TODO
     std::vector<TravelSegment> initialLayerMoves;
+
+    bool hasSkirt = false;
+    PMCollection<ToolSegment> skirtSegments;
 };
 
 #endif // TOOLPATH_H
