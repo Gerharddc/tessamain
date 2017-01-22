@@ -1226,13 +1226,15 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
 
     prog.StartNextStep(2 + GlobalSettings::SkirtLineCount.Get());
 
-    Paths comboOutline;
     Clipper clipper;
+    Paths comboOutline;
 
     for (const LayerIsland &isle : mip->layerComponents[0].islandList)
         clipper.AddPaths(isle.outlinePaths, PolyType::ptSubject, true);
 
     clipper.Execute(ClipType::ctUnion, comboOutline);
+    OptimizePaths(comboOutline);
+
     prog.CompleteStepPart();
 
     IntPoint lastP(0, 0);
@@ -1242,7 +1244,7 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
 
     auto &seg = mip->layerComponents[0].islandList[0].segments;
 
-    offset.AddPaths(comboOutline, JoinType::jtRound, EndType::etClosedPolygon);
+    offset.AddPaths(comboOutline, JoinType::jtSquare, EndType::etClosedPolygon);
     offset.Execute(comboOutline, GlobalSettings::SkirtDistance.Get() * scaleFactor);
     prog.CompleteStepPart();
 
@@ -1250,7 +1252,7 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
     {
         offset.Clear();
 
-        offset.AddPaths(comboOutline, JoinType::jtRound, EndType::etClosedPolygon);
+        offset.AddPaths(comboOutline, JoinType::jtSquare, EndType::etClosedPolygon);
         offset.Execute(comboOutline, NozzleWidth * scaleFactor);
 
         for (Path path : comboOutline)
@@ -2046,7 +2048,7 @@ MeshInfoPtr ChopperEngine::SliceMesh(Mesh *inputMesh, Progressor::ProgressCallba
     GenerateRaft(mip, prog);
 
     // Generate a skirt
-    //GenerateSkirt(mip, prog); // Step 6
+    GenerateSkirt(mip, prog); // Step 6
 
     // Tim the infill grids to fit the segments
     TrimInfill(mip, prog); // Step 7
