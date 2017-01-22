@@ -94,8 +94,18 @@ struct IntPoint3
     }
 };
 
-struct MovingSegment : public ToolSegment
+template <typename T>
+static void FreeInfoOfType(void *info)
 {
+    delete (T)info;
+}
+
+class MovingSegment : public ToolSegment
+{
+private:
+    void (*freeRenderInfo)(void*);
+
+public:
     IntPoint3 p1, p2;
     int speed;
 
@@ -115,6 +125,21 @@ struct MovingSegment : public ToolSegment
     {
         p1.X = p.X;
         p1.Y = p.Y;
+    }
+
+    // TODO: renderInfo is not move safe
+    void *renderInfo = nullptr;
+
+    template <typename T>
+    void setRenderInfo(T info)
+    {
+        renderInfo = info;
+        freeRenderInfo = &FreeInfoOfType<T>;
+    }
+
+    ~MovingSegment() {
+        if (renderInfo != nullptr)
+            freeRenderInfo(renderInfo);
     }
 };
 

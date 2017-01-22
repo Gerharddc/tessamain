@@ -69,7 +69,16 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
         float layerZ = 0.0f;
         bool layerZSet =false;
 
-        typedef std::vector<Point2> PointIsle;
+        struct InfoPoint : public Point2
+        {
+            RenderInfo *info;
+
+            InfoPoint(double _x, double _y, RenderInfo *_info) :
+                Point2(_x, _y), info(_info) {}
+        };
+
+        //typedef std::vector<Point2> PointIsle;
+        typedef std::vector<InfoPoint> PointIsle;
 
         // Guess initial size
         std::vector<PointIsle> pIsles;
@@ -84,16 +93,23 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
             {
                 if (MovingSegment *ms = static_cast<MovingSegment*>(ts))
                 {
+                    RenderInfo *info = new RenderInfo();
+
                     if (ms->type == ToolSegType::Travel)
                     {
                          pIsles.emplace_back();
                          started = true;
                     }
+                    //else if (ms->type == ToolSegType::Extruded)
+                      //  info->isExtruded = true;
+
+                    ms->setRenderInfo(info);
 
                     if (started)
-                        pIsles.back().push_back(Point2(
+                        pIsles.back().push_back(InfoPoint(
                                                     (double)(ms->p2.X) / scaleFactor,
-                                                    (double)(ms->p2.Y) / scaleFactor));
+                                                    (double)(ms->p2.Y) / scaleFactor,
+                                                    info));
                 }
             }
         }
@@ -110,15 +126,19 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                     {
                         MovingSegment *ms = static_cast<MovingSegment*>(ts);
 
+                        RenderInfo *info = new RenderInfo();
+                        ms->setRenderInfo(info);
+
                         if (!lastExtruded)
                         {
                             // Guess initial size
                             pIsles.emplace_back();
                             pIsles.back().reserve(seg->toolSegments.size() / 2);
 
-                            pIsles.back().push_back(Point2(
+                            pIsles.back().push_back(InfoPoint(
                                                         (double)(ms->p1.X) / scaleFactor,
-                                                        (double)(ms->p1.Y) / scaleFactor));
+                                                        (double)(ms->p1.Y) / scaleFactor,
+                                                        info)); // TODO
 
                             // TODO: find a better way to get the layer z once
                             if (!layerZSet)
@@ -128,9 +148,10 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                             }
                         }
 
-                        pIsles.back().push_back(Point2(
+                        pIsles.back().push_back(InfoPoint(
                                                     (double)(ms->p2.X) / scaleFactor,
-                                                    (double)(ms->p2.Y) / scaleFactor));
+                                                    (double)(ms->p2.Y) / scaleFactor,
+                                                    info));
 
                         lastExtruded = true;
                     }
@@ -359,13 +380,13 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                 // Add the info and move to the next one
                 // -1 means the points signifies the start of a move
                 // and isn't relevant
-                if (curPoint.lineNum != -1)
+                /*if (curPoint.lineNum != -1)
                 {
                     LineInfo &isleLineInfo = lineInfos[curPoint.lineNum];
                     isleLineInfo.idxInChunk = lastEndIdx;
                     isleLineInfo.lineIdxInChunk = lastLineIdx;
                     isleLineInfo.chunkIdx = chunks->size() - 1;
-                }
+                }*/
             }
         }
     }
@@ -377,7 +398,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
     dc->ShrinkToSize();
 
     // Fill in all the blank lineinfos
-    int chunkIdx = 0;
+    /*int chunkIdx = 0;
     int idxInChunk = 0;
     int lineIdxInChunk = 0;
     for (LineInfo &li : lineInfos)
@@ -392,7 +413,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
         li.chunkIdx = chunkIdx = std::max(chunkIdx, li.chunkIdx);
         li.idxInChunk = idxInChunk = std::max(idxInChunk, li.idxInChunk);
         li.lineIdxInChunk = lineIdxInChunk = std::max(lineIdxInChunk, li.lineIdxInChunk);
-    }
+    }*/
 
     chunks->shrink_to_fit();
     return chunks;

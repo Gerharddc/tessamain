@@ -42,8 +42,8 @@ static GLint mProjUniformLocation = 0;
 static GLint mColorUniformLocation = 0;
 static GLint mLineOnlyUnformLocation = 0;
 
-static int64_t curPrintToLine = -1;
-static int64_t targetPrintToLine = -1;
+//static int64_t curPrintToLine = -1;
+//static int64_t targetPrintToLine = -1;
 static int printToChunk = -1;
 static int printToIdx = -1;
 static int printToLineIdx = -1;
@@ -179,7 +179,7 @@ void ToolpathRendering::SetToolpath(RenderTP *tp)
 
 void ToolpathRendering::ShowPrintedToLine(int64_t lineNum)
 {
-    if (lineNum < 0)
+    /*if (lineNum < 0)
     {
         targetPrintToLine = -1;
         curPrintToLine = -1;
@@ -187,7 +187,7 @@ void ToolpathRendering::ShowPrintedToLine(int64_t lineNum)
         printToIdx = -1;
     }
     else
-        targetPrintToLine = lineNum;
+        targetPrintToLine = lineNum;*/
 
     ComboRendering::Update();
 }
@@ -284,7 +284,7 @@ void ToolpathRendering::Draw()
         dirtyColor = false;
     }
 
-    if (path != nullptr && targetPrintToLine != curPrintToLine)
+    /*if (path != nullptr && targetPrintToLine != curPrintToLine)
     {
         printToChunk = path->lineInfos[targetPrintToLine - 1].chunkIdx;
         printToIdx = path->lineInfos[targetPrintToLine - 1].idxInChunk;
@@ -292,7 +292,8 @@ void ToolpathRendering::Draw()
         curPrintToLine = targetPrintToLine;
     }
 
-    std::size_t target = (printToChunk != -1) ? printToChunk + 1 : groupCount;
+    std::size_t target = (printToChunk != -1) ? printToChunk + 1 : groupCount;*/
+    std::size_t target = groupCount;
 
     // Avoid div by zero and time wasting
     if (target == 0)

@@ -23,7 +23,7 @@ struct Point2
 {
     float x = 0;
     float y = 0;
-    int64_t lineNum = -1; // The gcode line
+    //int64_t lineNum = -1; // The gcode line
 
     Point2() {}
     Point2(float _x, float _y) : x(_x), y(_y) {}
@@ -40,7 +40,7 @@ struct Point2
     }
 };
 
-struct LineInfo
+/*struct LineInfo
 {
     uint16_t milliSecs = 0;
     bool isMove = false;
@@ -50,6 +50,16 @@ struct LineInfo
     int chunkIdx = 0;
     int idxInChunk = 0;
     int lineIdxInChunk = 0;
+};*/
+
+struct RenderInfo
+{
+    uint16_t milliSces = 0;
+    //bool isExtruded = false;
+
+    uint32_t chunkIdx = 0;
+    uint32_t idxInChunk = 0;
+    uint32_t lineIdxInChunk = 0; // TODO: check
 };
 
 class RenderTP;
@@ -61,7 +71,7 @@ class TPDataChunk
 private:
     bool indicesCopied = false;
     bool lineIdxsCopied = false;
-    bool lineInfosCopied = false;
+    //bool lineInfosCopied = false;
     ushort *indices = nullptr;
     ushort *lineIdxs = nullptr;
 
@@ -91,8 +101,8 @@ struct RenderTP
 {
     ChopperEngine::MeshInfoPtr mip;
     std::vector<TPDataChunk> *CalculateDataChunks();
-    std::vector<LineInfo> lineInfos;
-    std::size_t totalMillis = 0; // ETA
+    //std::vector<LineInfo> lineInfos;
+    //std::size_t totalMillis = 0; // ETA
 
     RenderTP(ChopperEngine::MeshInfoPtr _mip) {
         mip = _mip;
