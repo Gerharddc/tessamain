@@ -336,9 +336,12 @@ QString FBORenderer::sliceMeshes()
 
         auto mip = ComboRendering::SliceMeshes(&SlicerProgressCallback, (const void*)fbo);
 
-        //ChopperEngine::LineWriter lw(mip);
-        //while (lw.HasLineToRead())
-          //  std::cout << lw.ReadNextLine() << std::endl;
+//#define PRINT_GCODE_DEBUG
+#ifdef PRINT_GCODE_DEBUG
+        ChopperEngine::LineWriter lw(mip);
+        while (lw.HasLineToRead())
+            std::cout << lw.ReadNextLine() << std::endl;
+#endif
 
         QMetaObject::invokeMethod(fbo, "SlicerFinsihed", Q_ARG(ChopperEngine::MeshInfoPtr, mip));
     }, this).detach();

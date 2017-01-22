@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "meshinfo.h"
+#include "Printer/gcode.h"
 
 namespace ChopperEngine
 {
@@ -23,7 +24,7 @@ namespace ChopperEngine
         std::atomic_bool done { false };
 
         const unsigned int TargetBufSize = 100;
-        std::queue<std::string> stringBuf;
+        std::queue<GCode> gcodeBuf;
 
         void WriteLinesFunc();
         std::thread bufferThread;

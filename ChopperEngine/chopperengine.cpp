@@ -1203,6 +1203,18 @@ static inline void GenerateRaft(MeshInfoPtr mip, Progressor &prog)
     SlicerLog("Generating raft");
 }
 
+/*static inline void ReserveSkirtIsland(MeshInfoPtr mip)
+{
+    if (GlobalSettings::SkirtLineCount.Get() == 0)
+        return;
+
+    // Create an island at the front of the first layer for the skirt
+
+    mip->layerComponents[0].islandList.emplace_back();
+    mip->layerComponents[0].islandList.back().
+            segments.emplace_back<LayerSegment>(SegmentType::SkirtSegment);
+}*/
+
 static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
 {
     SlicerLog("Generating skirt");
@@ -1224,6 +1236,8 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
     auto &segs = mip->layerComponents[0].skirtSegments;
     mip->layerComponents[0].hasSkirt = true;
     ClipperOffset offset;
+
+    auto &seg = mip->layerComponents[0].islandList[0].segments;
 
     offset.AddPaths(comboOutline, JoinType::jtRound, EndType::etClosedPolygon);
     offset.Execute(comboOutline, GlobalSettings::SkirtDistance.Get() * scaleFactor);

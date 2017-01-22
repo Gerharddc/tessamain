@@ -3,6 +3,8 @@
 
 #include <string>
 #include <vector>
+#include <sstream>
+#include <iomanip>
 
 class GCode{
 private:
@@ -13,6 +15,7 @@ private:
     unsigned short fields = 128;
     unsigned short fields2 = 0;
     std::string text;
+    bool inclChecksum = true; // TODO
 
     void ActivateV2OrForceAscii() {}
 
@@ -62,7 +65,7 @@ public:
     unsigned short getM() {
         return m;
     }
-    void setN(unsigned short value) {
+    void setM(unsigned short value) {
         m = value;
         fields |= 2;
     }
@@ -84,7 +87,7 @@ public:
     unsigned char getT() {
         return t;
     }
-    void setG(unsigned char value) {
+    void setT(unsigned char value) {
         t = value;
         fields |= 512;
     }
@@ -296,6 +299,68 @@ public:
 
         buf.shrink_to_fit();
         return buf;
+    }
+
+    std::string getAscii()
+    {
+        std::stringstream os;
+        os << std::fixed << std::setprecision(3);
+
+        if (hasN())
+            os << "N" << n << " ";
+
+        if (hasM())
+            os << "M" << m;
+        else if (hasG())
+            os << "G" << g;
+
+        if (hasT())
+        {
+            if (hasM())
+                os << " ";
+
+            os << "T" << t;
+        }
+
+        if (hasX())
+            os << " X" << x;
+        if (hasY())
+            os << " Y" << y;
+        if (hasZ())
+            os << " Z" << z;
+        if (hasE())
+            os << " E" << e;
+        if (hasF())
+            os << " F" << f;
+        if (hasI())
+            os << " I" << ii;
+        if (hasJ())
+            os << " J" << j;
+        if (hasR())
+            os << " R" << r;
+        if (hasS())
+            os << " S" << s;
+        if (hasP())
+            os << " P" << p;
+        if (hasText())
+            os << " " << text;
+
+        std::string line = os.str();
+
+        if (inclChecksum)
+        {
+            int check = 0;
+
+            for (char ch : line)
+                check ^= (ch & 0xff);
+
+            check ^= 32;
+
+            line += " *";
+            line += std::to_string(check);
+        }
+
+        return line;
     }
 };
 
