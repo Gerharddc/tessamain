@@ -1,6 +1,19 @@
 #include "structures.h"
 
-static inline void AddPointsToArray(float *array, Point2 &p, short count, uint32_t &arrPos)
+struct InfoPoint : public Point2
+{
+    RenderInfo *info;
+
+    InfoPoint(double _x, double _y, RenderInfo *_info) :
+        Point2(_x, _y), info(_info) {}
+
+    InfoPoint(double _x, double _y) :
+        Point2(_x, _y), info(nullptr) {}
+
+    InfoPoint() : Point2(), info(nullptr) {}
+};
+
+static inline void AddPointsToArray(float *array, InfoPoint &p, short count, uint32_t &arrPos)
 {
     for (short i = 0; i < count; i++)
     {
@@ -10,7 +23,7 @@ static inline void AddPointsToArray(float *array, Point2 &p, short count, uint32
     }
 }
 
-static inline void AddPointZsToArray(float *array, Point2 &p, float z, short count, uint32_t &arrPos)
+static inline void AddPointZsToArray(float *array, InfoPoint &p, float z, short count, uint32_t &arrPos)
 {
     for (short i = 0; i < count; i++)
     {
@@ -54,6 +67,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
     ushort lineIdx = 0;
     std::vector<TPDataChunk> *chunks = new std::vector<TPDataChunk>();
     TPDataChunk *dc = nullptr;
+    totalMillis = 0;
 
     // Data for partial rendering
     ushort lastEndIdx = 0;
@@ -69,22 +83,12 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
         float layerZ = 0.0f;
         bool layerZSet =false;
 
-        struct InfoPoint : public Point2
-        {
-            RenderInfo *info;
-
-            InfoPoint(double _x, double _y, RenderInfo *_info) :
-                Point2(_x, _y), info(_info) {}
-        };
-
-        //typedef std::vector<Point2> PointIsle;
         typedef std::vector<InfoPoint> PointIsle;
 
         // Guess initial size
         std::vector<PointIsle> pIsles;
         pIsles.reserve(layer.islandList.size());
 
-        // TODO: render skirt as normal piece
         if (layer.hasSkirt)
         {
             bool started = false;
@@ -100,10 +104,14 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                          pIsles.emplace_back();
                          started = true;
                     }
-                    //else if (ms->type == ToolSegType::Extruded)
-                      //  info->isExtruded = true;
+                    else if (ms->type == ToolSegType::Extruded)
+                        info->isExtruded = true;
 
                     ms->setRenderInfo(info);
+
+                    auto millis = ms->calcMillis();
+                    info->milliSecs = millis;
+                    totalMillis += millis;
 
                     if (started)
                         pIsles.back().push_back(InfoPoint(
@@ -122,12 +130,22 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
 
                 for (ToolSegment *ts : seg->toolSegments)
                 {
-                    if (ts->type == ToolSegType::Extruded)
-                    {
-                        MovingSegment *ms = static_cast<MovingSegment*>(ts);
+                    MovingSegment *ms;
+                    RenderInfo *info = nullptr;
 
-                        RenderInfo *info = new RenderInfo();
+                    if (ms = static_cast<MovingSegment*>(ts))
+                    {
+                        info = new RenderInfo();
                         ms->setRenderInfo(info);
+
+                        auto millis = ms->calcMillis();
+                        info->milliSecs = millis;
+                        totalMillis += millis;
+                    }
+
+                    if (ts->type == ToolSegType::Extruded && info != nullptr)
+                    {
+                        info->isExtruded = true;
 
                         if (!lastExtruded)
                         {
@@ -137,8 +155,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
 
                             pIsles.back().push_back(InfoPoint(
                                                         (double)(ms->p1.X) / scaleFactor,
-                                                        (double)(ms->p1.Y) / scaleFactor,
-                                                        info)); // TODO
+                                                        (double)(ms->p1.Y) / scaleFactor));
 
                             // TODO: find a better way to get the layer z once
                             if (!layerZSet)
@@ -199,8 +216,8 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                 bool isLast = (j == pCount - 1);
                 bool isFirst = (j == 0);
 
-                Point2 curPoint = printPoints[j];
-                Point2 prevPoint, nextPoint;
+                InfoPoint curPoint = printPoints[j];
+                InfoPoint prevPoint, nextPoint;
                 bool hasNoPrev = false;
                 bool hasNoNext = false;
 
@@ -378,8 +395,15 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
                 }
 
                 // Add the info and move to the next one
-                // -1 means the points signifies the start of a move
+                // nullptr means the points signifies the start of a move
                 // and isn't relevant
+                if (curPoint.info != nullptr)
+                {
+                    RenderInfo *info = curPoint.info;
+                    info->idxInChunk = lastEndIdx;
+                    info->lineIdxInChunk = lastLineIdx;
+                    info->chunkIdx = chunks->size() - 1;
+                }
                 /*if (curPoint.lineNum != -1)
                 {
                     LineInfo &isleLineInfo = lineInfos[curPoint.lineNum];

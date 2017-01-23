@@ -6,6 +6,8 @@
 #include <sstream>
 #include <iomanip>
 
+#include "Rendering/structures.h"
+
 class GCode{
 private:
     unsigned short g, m = 0;
@@ -28,6 +30,11 @@ private:
 public:
     int n;
     std::string orig;
+    RenderInfo *renderInfo = nullptr;
+
+    bool hasRenderInfo() {
+        return (renderInfo != nullptr);
+    }
 
     bool hasCode() {
         return (fields != 128);

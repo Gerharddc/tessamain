@@ -39,9 +39,6 @@ static void CheckTempLoop()
 
 Printer::Printer(QObject *parent) : QObject(parent)
 {
-    //TempThread = std::thread(CheckTempLoop);
-    //TempThread.detach();
-
     // Set the fan gpio to output
     std::ofstream dir("/sys/class/gpio/gpio146/direction");
     if (!dir) {
@@ -87,9 +84,7 @@ Printer::~Printer()
 // This has to be called from the main thread
 void Printer::Connect()
 {
-    //serial = new QSerialPort("rfcomm0");
     serial = new QSerialPort("ttyAMA0");
-    //serial->setBaudRate(9600);
     serial->setBaudRate(57600);
 
     if (serial->open(QSerialPort::ReadWrite))
@@ -220,15 +215,20 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
             else
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                //std::cout << "Serial not open for printing." << std::endl;
+                std::cout << "Serial not open for printing." << std::endl;
             }
 
             // Update the progress indicators
-            /*ToolpathRendering::ShowPrintedToLine(lineNum);
-            m_timeLeft -= ComboRendering::getToolpath()->lineInfos[lineNum - 1].milliSecs;
-            emit GlobalPrinter.etaChanged();
-            emit GlobalPrinter.percentDoneChanged();
-            GlobalPrinter.UpdateProgressStatus();*/
+            if (line.hasRenderInfo())
+            {
+                RenderInfo *info = line.renderInfo;
+
+                ToolpathRendering::ShowPrintedToInfo(info);
+                m_timeLeft -= info->milliSecs;
+                emit GlobalPrinter.etaChanged();
+                emit GlobalPrinter.percentDoneChanged();
+                GlobalPrinter.UpdateProgressStatus();
+            }
         }
         else
         {
@@ -269,7 +269,7 @@ void Printer::SignalPrintStop()
         emit statusChanged();
 
         // Reset the view
-        //TODO: ToolpathRendering::ShowPrintedToLine(-1);
+        ToolpathRendering::ShowPrintedFull();
 
         // Retract, home x & y, then z
         extrude(-15.0f);

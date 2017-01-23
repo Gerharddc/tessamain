@@ -42,11 +42,7 @@ static GLint mProjUniformLocation = 0;
 static GLint mColorUniformLocation = 0;
 static GLint mLineOnlyUnformLocation = 0;
 
-//static int64_t curPrintToLine = -1;
-//static int64_t targetPrintToLine = -1;
-static int printToChunk = -1;
-static int printToIdx = -1;
-static int printToLineIdx = -1;
+static RenderInfo *printToInfo = nullptr;
 
 static GroupGLData *groupDatas = nullptr;
 static std::size_t groupCount = 0;
@@ -177,18 +173,18 @@ void ToolpathRendering::SetToolpath(RenderTP *tp)
     dirtyPath = true;
 }
 
-void ToolpathRendering::ShowPrintedToLine(int64_t lineNum)
+void ToolpathRendering::ShowPrintedToInfo(RenderInfo *info)
 {
-    /*if (lineNum < 0)
+    if (info != nullptr && info->isExtruded)
     {
-        targetPrintToLine = -1;
-        curPrintToLine = -1;
-        printToChunk = -1;
-        printToIdx = -1;
+        printToInfo = info;
+        ComboRendering::Update();
     }
-    else
-        targetPrintToLine = lineNum;*/
+}
 
+void ToolpathRendering::ShowPrintedFull()
+{
+    printToInfo = nullptr;
     ComboRendering::Update();
 }
 
@@ -284,16 +280,11 @@ void ToolpathRendering::Draw()
         dirtyColor = false;
     }
 
-    /*if (path != nullptr && targetPrintToLine != curPrintToLine)
-    {
-        printToChunk = path->lineInfos[targetPrintToLine - 1].chunkIdx;
-        printToIdx = path->lineInfos[targetPrintToLine - 1].idxInChunk;
-        printToLineIdx = path->lineInfos[targetPrintToLine - 1].lineIdxInChunk;
-        curPrintToLine = targetPrintToLine;
-    }
-
-    std::size_t target = (printToChunk != -1) ? printToChunk + 1 : groupCount;*/
-    std::size_t target = groupCount;
+    std::size_t target;
+    if (path != nullptr && printToInfo != nullptr)
+        target = printToInfo->chunkIdx + 1;
+    else
+        target = groupCount;
 
     // Avoid div by zero and time wasting
     if (target == 0)
@@ -358,14 +349,16 @@ void ToolpathRendering::Draw()
         if (simpleDraw)
         {
             glUniform1i(mLineOnlyUnformLocation, true);
-            glDrawElements(GL_LINES, (i == target - 1 && printToChunk != -1) ? printToLineIdx : ld->lineIdxCount, GL_UNSIGNED_SHORT, ld->lineIdxs);
+            glDrawElements(GL_LINES, (i == target - 1 && printToInfo != nullptr) ?
+                               printToInfo->lineIdxInChunk : ld->lineIdxCount, GL_UNSIGNED_SHORT, ld->lineIdxs);
             complexify = true;
             lastSimple = true;
         }
         else
         {
             glUniform1i(mLineOnlyUnformLocation, false);
-            glDrawElements(GL_TRIANGLES, (i == target - 1 && printToChunk != -1) ? printToIdx : ld->idxCount, GL_UNSIGNED_SHORT, ld->indices);
+            glDrawElements(GL_TRIANGLES, (i == target - 1 && printToInfo != nullptr) ?
+                               printToInfo->idxInChunk : ld->idxCount, GL_UNSIGNED_SHORT, ld->indices);
         }
     }
 

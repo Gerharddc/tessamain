@@ -102,6 +102,9 @@ void LineWriter::AddToolSegments(const PMCollection<ToolSegment> &toolSegments)
                     gcode.setF(prev0F);
                 }
             }
+
+            if (ms->renderInfo != nullptr)
+                gcode.renderInfo = (RenderInfo*)ms->renderInfo;
         }
         else
         {
@@ -199,6 +202,9 @@ void LineWriter::WriteLinesFunc()
                 prev0F = move.speed;
                 gcode.setF(prev0F);
             }
+
+            if (move.renderInfo != nullptr)
+                gcode.renderInfo = (RenderInfo*)move.renderInfo;
 
             ADDGCODE(gcode);
         }

@@ -134,7 +134,19 @@ public:
     void setRenderInfo(T info)
     {
         renderInfo = info;
-        freeRenderInfo = &FreeInfoOfType<T>;
+        freeRenderInfo = &FreeInfoOfType<T>;     
+    }
+
+    uint16_t calcMillis()
+    {
+        // Calculate the time for the info
+        double x = (double)(p2.X - p1.X) / scaleFactor;
+        double y = (double)(p2.Y - p1.Y) / scaleFactor;
+        double z = (double)(p2.Z - p1.Z) / scaleFactor;
+        double dist = std::sqrt(x*x + y*y + z*z);
+
+        // TODO: Feedrate per minute...
+        return dist * 6000 / speed;
     }
 
     ~MovingSegment() {
