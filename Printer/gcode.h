@@ -21,8 +21,8 @@ private:
 
     void ActivateV2OrForceAscii() {}
 
-    void PushBytes(std::vector<char> &buf, void *ptr, std::size_t length) {
-        char *read = reinterpret_cast<char*>(ptr);
+    void PushBytes(std::vector<uint8_t> &buf, void *ptr, std::size_t length) {
+        uint8_t *read = reinterpret_cast<uint8_t*>(ptr);
         for (std::size_t i = 0; i < length; i++)
             buf.push_back(read[i]);
     }
@@ -218,10 +218,10 @@ public:
         return ((fields & 4096) != 0);
     }
 
-    std::vector<char> getBinary(int version) {
+    std::vector<uint8_t> getBinary(int version) {
         bool v2 = isV2();
 
-        std::vector<char> buf;
+        std::vector<uint8_t> buf;
 
 #define PB(item) \
     PushBytes(buf, &item, sizeof(item));
@@ -235,11 +235,11 @@ public:
         if (v2) {
             PB(fields2);
             if (hasText())
-                PBC(unsigned char, text.length());
+                PBC(uint8_t, text.length());
         }
 
         if (hasN()) {
-            PBC(unsigned short, n & 65535);
+            PBC(uint16_t, n & 65535);
         }
         if (v2) {
             if (hasM())
@@ -249,9 +249,9 @@ public:
         }
         else {
             if (hasM())
-                PBC(unsigned char, m);
+                PBC(uint8_t, m);
             if (hasG())
-                PBC(unsigned char, g);
+                PBC(uint8_t, g);
         }
 
         if (hasX())
@@ -289,22 +289,22 @@ public:
                     len = 16;
 
                 for (i = 0; i < len; i++)
-                    PB(text[i]);
+                    PBC(uint8_t, text[i]);
 
                 for (; i < 16; i++)
-                    PBC(char, 0);
+                    PBC(uint8_t, 0);
             }
         }
 
         // compute fletcher-16 checksum
         int sum1, sum2 = 0;
-        for (char c : buf)
+        for (uint8_t c : buf)
         {
             sum1 = (sum1 + c) % 255;
             sum2 = (sum2 + sum1) % 255;
         }
-        PBC(char, sum1);
-        PBC(char, sum2);
+        PBC(uint8_t, sum1);
+        PBC(uint8_t, sum2);
 
         buf.shrink_to_fit();
         return buf;

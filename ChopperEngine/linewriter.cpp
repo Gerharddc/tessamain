@@ -147,9 +147,11 @@ void LineWriter::WriteLinesFunc()
 
         GCode mcode;
         mcode.setM(109);
-        mcode.setT(0);
+        //mcode.setT(0);
         mcode.setS(GlobalSettings::PrintTemperature.Get());
         ADDGCODE(mcode);
+
+        std::cout << "mcode: " << mcode.getAscii() << std::endl;
 
         gcode = GCode();
         gcode.setG(92);

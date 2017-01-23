@@ -3,8 +3,11 @@
 
 #include <QObject>
 #include <QString>
+#include <mutex>
+#include <condition_variable>
 
 #include "ChopperEngine/meshinfo.h"
+#include "gcode.h"
 
 class Printer : public QObject
 {
@@ -19,13 +22,18 @@ private:
     bool m_autoFan = true;
     QString m_status = "Not printing";
 
+    void ProcessOk(int lineNum);
+    void ProcessResend(int lineNum);
+
+    void SendLineReset(int n = 0);
+
 public:
     explicit Printer(QObject *parent = 0);
     ~Printer();
     void Connect();
     void SignalPrintStop();
     void SignalTargetTemp(float temp);
-    void sendCommand(QString cmd);
+    void sendGcode(GCode code);
     void UpdateProgressStatus();
 
     Q_INVOKABLE void startPrint(const ChopperEngine::MeshInfoPtr _mip);
@@ -36,6 +44,7 @@ public:
     Q_INVOKABLE void homeX();
     Q_INVOKABLE void homeY();
     Q_INVOKABLE void homeZ();
+    Q_INVOKABLE void setRelative();
     Q_INVOKABLE void moveX(float distance);
     Q_INVOKABLE void moveY(float distance);
     Q_INVOKABLE void moveZ(float distance);

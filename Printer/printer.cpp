@@ -15,29 +15,45 @@ Printer GlobalPrinter;
 static QSerialPort *serial = nullptr;
 static std::thread PrintThread;
 static std::thread TempThread;
-static volatile bool WaitingForOk = false;
 static volatile bool StopPrintThread = false;
-static volatile bool NeedTemp = false;
 static volatile bool CheckTemp = true;
 static std::ofstream *fanGPIO = nullptr;
+
+static const uint8_t bufSize = 12;
+static GCode gcodeBuf[bufSize];
+static std::atomic_int curLine { 1 };
+static std::atomic_int frontLine { 1 };
+static std::atomic_int bufIdx { 0 };
+static const int maxLineNum = 65000;
+static std::atomic_bool resending { false };
+
+static std::mutex mtxSpace, bufMtx;
+static std::condition_variable cvSpace;
 
 #ifndef REAL_PRINTER
 #define SIMULATE_PRINT
 #endif
 
+//#define PRINT_COMMUNICATION
+
 static void CheckTempLoop()
 {
     while (CheckTemp)
     {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         // If the print thread is waiting for a respone then it means that
         // that the buffer is full. We need to ask it to send the temp request for us then
         // when it gets a chance.
-        if (WaitingForOk)
-            CheckTemp = true;
-        else
-            GlobalPrinter.sendCommand("M105");
+        //if (WaitingForOk)
+          //  CheckTemp = true;
+        //else
+        //{
+            GCode code;
+            code.setM(105);
+            GlobalPrinter.sendGcode(code);
+        //}
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        //std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 }
 
@@ -102,6 +118,8 @@ void Printer::Connect()
         qDebug() << serial->readAll();
         qDebug() << "Opened";
 
+        SendLineReset();
+
         TempThread = std::thread(CheckTempLoop);
         TempThread.detach();
     }
@@ -117,7 +135,23 @@ void Printer::readPrinterOutput()
         QString line(serial->readLine());
 
         if (line.contains("ok"))
-            WaitingForOk = false;
+        {
+            QString rest = line.mid(line.indexOf(" ") + 1);
+
+            if (rest.contains(" "))
+                rest = line.mid(0, line.indexOf(" "));
+
+            bool hasInt = false;
+            int res = rest.toInt(&hasInt);
+
+            if (hasInt)
+                ProcessOk(res);
+        }
+        else if (line.contains("Resend"))
+        {
+            QString num = line.mid(line.indexOf(":") + 1);
+            ProcessResend(num.toInt());
+        }
 
         if (line.contains("T:"))
         {
@@ -130,7 +164,9 @@ void Printer::readPrinterOutput()
             }
         }
 
-        //qDebug() << "Read: " << line;
+#ifdef PRINT_COMMUNICATION
+        qDebug() << "Read: " << line;
+#endif
     }
 }
 
@@ -140,27 +176,197 @@ void Printer::printerFinished()
     emit printingChanged();
 }
 
-void Printer::sendCommand(QString cmd)
+void Printer::ProcessOk(int lineNum)
 {
+    if (bufIdx == 0)
+        return;
+
+    int removeCount = 1;
+
+    if (lineNum != frontLine)
+    {
+        std::cout << "ERROR: out of order lineNum: " << lineNum
+                  << " but frontLine: " << frontLine << std::endl;
+
+        // This usually means we missed an ok and should be able to
+        // remove more than 1 line
+        if (lineNum > frontLine && lineNum <= curLine)
+        {
+            removeCount = lineNum - frontLine + 1;
+            std::cout << "Removing " << removeCount << " lines" << std::endl;
+        }
+        else
+        {
+            std::cout << "Invalid ok line" << std::endl;
+            return;
+        }
+    }
+
+    bufMtx.lock();
+
+    for (int i = 0; i < bufIdx-removeCount; i++)
+        gcodeBuf[i] = gcodeBuf[i + removeCount];
+
+    bufIdx -= removeCount;
+    frontLine += removeCount;
+
+    if (lineNum == maxLineNum)
+    {
+        // Send twice just to make sure
+        // TODO: actually make sure instead
+        SendLineReset();
+        SendLineReset();
+
+        curLine = 1;
+        frontLine = 1;
+
+        std::cout << "Wrap ok" << std::endl;
+    }
+
+    bufMtx.unlock();
+
+    // Alert the sending threads that space has opened
+    cvSpace.notify_all();
+}
+
+void Printer::ProcessResend(int lineNum)
+{
+    if (bufIdx == 0)
+        return;
+
+    // Check if the command to reset the line numbers was missed
+    // and resend if needed
+    if (lineNum > maxLineNum)
+    {
+        SendLineReset();
+        return;
+    }
+
+    // If the resend is smaller than the front line then something went worng
+    // TODO: fix this properly
+    if (lineNum < frontLine)
+    {
+        SendLineReset(frontLine);
+        return;
+    }
+
+    // TODO: handle resend of resend properly
+    if (resending)
+        return;
+
+    resending = true;
+
+    int idx;
+    // Unwrap the line number
+    if (lineNum < frontLine)
+        idx = (maxLineNum - frontLine) + lineNum + 1;
+    else
+        idx = lineNum - frontLine;
+
+    if (idx >= bufIdx)
+    {
+        std::cout << "ERROR resend idx: " << idx << " > bufIdx:" << bufIdx << std::endl;
+    }
+    else
+    {
+        // We need to resend all the lines after this one as well but as they will shift places in
+        // the buffer once ok's start coming in so we need to cache them
+        GCode cloneBuf[bufSize];
+        int cloneIdx = 0;
+        for (int i = idx; i < bufSize; i++)
+        {
+            cloneBuf[cloneIdx] = gcodeBuf[i];
+            cloneIdx++;
+        }
+
+        if (serial != nullptr && serial->isOpen())
+        {
+            //std::vector<uint8_t> bytes = code.getBinary(1);
+            //serial->write((char*)bytes.data(), bytes.size());
+
+            for (int i = 0; i < cloneIdx; i++)
+            {
+                GCode code = cloneBuf[i];
+
+                serial->write(QString::fromStdString(code.getAscii() + '\n').toUtf8());
+                serial->flush();
+
+#ifdef PRINT_COMMUNICATION
+                std::cout << "Resent: " << code.getAscii() << std::endl;
+#endif
+            }
+        }
+        else
+            std::cout << "Serial port not open for sending" << std::endl;
+    }
+
+    resending = false;
+    cvSpace.notify_all();
+}
+
+void Printer::SendLineReset(int n)
+{
+    GCode code;
+    code.setM(110);
+    code.setN(n);
+
+    if (serial != nullptr && serial->isOpen())
+    {
+        serial->write(QString::fromStdString(code.getAscii() + '\n').toUtf8());
+        serial->flush();
+    }
+    else
+        std::cout << "Serial port not open for sending" << std::endl;
+}
+
+static std::mutex printMutex;
+
+void Printer::sendGcode(GCode code)
+{
+    printMutex.lock();
+
+    // Wait for space to open
+    if (bufIdx >= bufSize || resending || curLine > maxLineNum)
+    {
+        std::unique_lock<std::mutex> lck(mtxSpace);
+        while (bufIdx >= bufSize || resending || curLine > maxLineNum)
+            cvSpace.wait(lck);
+    }
+
+    bufMtx.lock();
+
+    code.setN(curLine);
+    gcodeBuf[bufIdx] = code;
+
+    // Store the linenumber as that for the front of the buffer
+    if (bufIdx == 0)
+        frontLine.store(curLine);
+
+    bufIdx++;
+    curLine++;
+
+    bufMtx.unlock();
+
 #ifndef SIMULATE_PRINT
     if (serial != nullptr && serial->isOpen())
     {
-        serial->write((cmd + '\n').toUtf8());
+        //std::vector<uint8_t> bytes = code.getBinary(1);
+        //serial->write((char*)bytes.data(), bytes.size());
+
+        serial->write(QString::fromStdString(code.getAscii() + '\n').toUtf8());
         serial->flush();
-        //qDebug() << "Wrote: " << cmd;
+
+#ifdef PRINT_COMMUNICATION
+        std::cout << "Wrote: " << code.getAscii() << std::endl;
+#endif
     }
     else
         std::cout << "Serial port not open for sending" << std::endl;
 #else
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 #endif
-}
 
-static inline void WaitForOk()
-{
-    WaitingForOk = true;
-    while (WaitingForOk && !StopPrintThread)
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    printMutex.unlock();
 }
 
 // Millis
@@ -186,7 +392,6 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
     if (m_totalTime == -1)
         std::cout << "ERROR: mesh totalMillis not set" << std::endl;
 
-    int64_t lineNum = 0;
     while (lw.HasLineToRead() && !StopPrintThread)
     {
 #ifndef SIMULATE_PRINT
@@ -194,7 +399,9 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
 #endif
         {
             GCode line = lw.ReadNextLine();
-            lineNum++;
+            // TODO: check if only comment
+            while (line.hasText())
+                line = lw.ReadNextLine();
 
             // Check for any target temperature commands
             if (line.hasM() && (line.getM() == 104 || line.getM() == 109))
@@ -214,19 +421,7 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
 #ifndef SIMULATE_PRINT
             if (serial->isOpen())
             {
-                serial->write(QString::fromStdString(line.getAscii() + '\n').toUtf8());
-                serial->flush();
-
-                // wait for an ok before sending the next line
-                WaitForOk();
-
-                // Check if there is a temp request waiting
-                if (NeedTemp)
-                {
-                    GlobalPrinter.sendCommand("M105");
-                    // wait for an ok before sending the next line
-                    WaitForOk();
-                }
+                GlobalPrinter.sendGcode(line);
             }
             else
             {
@@ -349,27 +544,41 @@ void Printer::stopPrint()
 void Printer::emergencyStop()
 {
     stopPrint();
-    sendCommand("M112");
+
+    GCode code;
+    code.setM(112);
+    sendGcode(code);
 }
 
 void Printer::homeAll()
 {
-    sendCommand("G28");
+    GCode code;
+    code.setG(28);
+    sendGcode(code);
 }
 
 void Printer::homeX()
 {
-    sendCommand("G28 X0");
+    GCode code;
+    code.setG(28);
+    code.setX(0.0f);
+    sendGcode(code);
 }
 
 void Printer::homeY()
 {
-    sendCommand("G28 Y0");
+    GCode code;
+    code.setG(28);
+    code.setY(0.0f);
+    sendGcode(code);
 }
 
 void Printer::homeZ()
 {
-    sendCommand("G28 Z0");
+    GCode code;
+    code.setG(28);
+    code.setZ(0.0f);
+    sendGcode(code);
 }
 
 void Printer::move(float x, float y, float z)
@@ -379,28 +588,51 @@ void Printer::move(float x, float y, float z)
     moveZ(z);
 }
 
+void Printer::setRelative()
+{
+    GCode code;
+    code.setG(91);
+    sendGcode(code);
+}
+
 void Printer::moveX(float distance)
 {
-    sendCommand("G91"); // relative
-    sendCommand("G1 X" + QString::number(distance));
+    setRelative();
+
+    GCode code;
+    code.setG(1);
+    code.setX(distance);
+    sendGcode(code);
 }
 
 void Printer::moveY(float distance)
 {
-    sendCommand("G91"); // relative
-    sendCommand("G1 Y" + QString::number(distance));
+    setRelative();
+
+    GCode code;
+    code.setG(1);
+    code.setX(distance);
+    sendGcode(code);
 }
 
 void Printer::extrude(float e)
 {
-    sendCommand("G91"); // relative
-    sendCommand("G1 E" + QString::number(e) + "F900");
+    setRelative();
+
+    GCode code;
+    code.setG(1);
+    code.setE(e);
+    sendGcode(code);
 }
 
 void Printer::moveZ(float distance)
 {
-    sendCommand("G91"); // relative
-    sendCommand("G1 Z" + QString::number(distance));
+    setRelative();
+
+    GCode code;
+    code.setG(1);
+    code.setX(distance);
+    sendGcode(code);
 }
 
 void Printer::setTargetTemp(float target)
@@ -409,7 +641,12 @@ void Printer::setTargetTemp(float target)
     if (target != m_targetTemp && target >= 0.0f)
     {
         if (m_heating)
-            sendCommand("M104 S" + QString::number(target));
+        {
+            GCode code;
+            code.setM(104);
+            code.setS(target);
+            sendGcode(code);
+        }
 
         m_targetTemp = target;
         emit targetTempChanged();
@@ -420,10 +657,15 @@ void Printer::setHeating(bool val)
 {
     if (val != m_heating)
     {
+        GCode code;
+        code.setM(104);
+
         if (val)
-            sendCommand("M104 S" + QString::number(m_targetTemp));
+            code.setS(m_targetTemp);
         else
-            sendCommand("M104 S0");
+            code.setS(0.0f);
+
+        sendGcode(code);
 
         m_heating = val;
         emit heatingChanged();
