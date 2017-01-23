@@ -21,7 +21,9 @@ static volatile bool NeedTemp = false;
 static volatile bool CheckTemp = true;
 static std::ofstream *fanGPIO = nullptr;
 
+#ifndef REAL_PRINTER
 #define SIMULATE_PRINT
+#endif
 
 static void CheckTempLoop()
 {

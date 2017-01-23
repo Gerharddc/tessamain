@@ -62,11 +62,13 @@ public:
     static GlobalSetting<float> LayerHeight;
     static GlobalSetting<int> SkirtLineCount;
     static GlobalSetting<float> SkirtDistance;
+    static GlobalSetting<float> SkirtSpeed;
     static GlobalSetting<float> PrintSpeed;
     static GlobalSetting<float> InfillSpeed;
     static GlobalSetting<float> TopBottomSpeed;
     static GlobalSetting<float> FirstLineSpeed;
     static GlobalSetting<float> TravelSpeed;
+    static GlobalSetting<float> BridgeSpeed;
     static GlobalSetting<float> RetractionSpeed;
     static GlobalSetting<float> RetractionDistance;
     static GlobalSetting<float> ShellThickness;

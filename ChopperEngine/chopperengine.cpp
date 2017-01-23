@@ -890,8 +890,7 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip, Progressor &prog)
                     if (topSegment.outlinePaths.size() > 0)
                     {
                         // All top segments are probably bridges
-                        // TODO: implement bridge speed
-                        topSegment.segmentSpeed = GlobalSettings::TravelSpeed.Get();
+                        topSegment.segmentSpeed = GlobalSettings::BridgeSpeed.Get();
                         // Extrude more for a bridge
                         topSegment.infillMultiplier = 2.0f;
                     }
@@ -911,8 +910,7 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip, Progressor &prog)
                     SegmentWithInfill &topSegment = isle.segments.emplace<SegmentWithInfill>(SegmentType::TopSegment);
                     topSegment.outlinePaths = isle.outlinePaths;
                     // All top segments are probably bridges
-                    // TODO: implement bridge speed
-                    topSegment.segmentSpeed = GlobalSettings::TravelSpeed.Get();
+                    topSegment.segmentSpeed = GlobalSettings::BridgeSpeed.Get();
                     // Extrude more for a bridge
                     topSegment.infillMultiplier = 2.0f;
                 }
@@ -987,8 +985,7 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip, Progressor &prog)
                     if (bottomSegment.outlinePaths.size() > 0)
                     {
                         // All non initial layer bottom segments are probably bridges
-                        // TODO: implement bridge speed
-                        bottomSegment.segmentSpeed = GlobalSettings::TravelSpeed.Get();
+                        bottomSegment.segmentSpeed = GlobalSettings::BridgeSpeed.Get();
                         // Extrude more for a bridge
                         bottomSegment.infillMultiplier = 2.0f;
                     }
@@ -1009,7 +1006,7 @@ static inline void CalculateTopBottomSegments(MeshInfoPtr mip, Progressor &prog)
                     SegmentWithInfill &bottomSegment = isle.segments.emplace<SegmentWithInfill>(SegmentType::BottomSegment);
                     bottomSegment.outlinePaths = isle.outlinePaths;
                     // Initial bottom segments should not be bridges
-                    bottomSegment.segmentSpeed = GlobalSettings::InfillSpeed.Get();
+                    bottomSegment.segmentSpeed = GlobalSettings::TopBottomSpeed.Get();
                 }
 
                 prog.CompleteStepPart();
@@ -1053,7 +1050,6 @@ static void CalculateInfillSegmentsMF(std::size_t startIdx, std::size_t endIdx, 
                 clipper.AddPaths(seg->outlinePaths, PolyType::ptClip, true);
             }
 
-            //SegmentWithInfill infillSeg(SegmentType::InfillSegment);
             SegmentWithInfill &infillSeg = isle.segments.emplace<SegmentWithInfill>(SegmentType::InfillSegment);
             infillSeg.segmentSpeed = GlobalSettings::InfillSpeed.Get();
 
@@ -1257,13 +1253,13 @@ static inline void GenerateSkirt(MeshInfoPtr mip, Progressor &prog)
 
         for (Path path : comboOutline)
         {
-            segs.emplace<TravelSegment>(lastP, path.front(), 0, 100);
+            segs.emplace<TravelSegment>(lastP, path.front(), 0, GlobalSettings::SkirtSpeed.Get());
 
             for (std::size_t i = 0; i < (path.size() - 1); i++)
-                segs.emplace<ExtrudeSegment>(path[i], path[i + 1], 0, 10);
+                segs.emplace<ExtrudeSegment>(path[i], path[i + 1], 0, GlobalSettings::SkirtSpeed.Get());
 
             lastP = path.back();
-            segs.emplace<ExtrudeSegment>(lastP, path[0], 0, 10);
+            segs.emplace<ExtrudeSegment>(lastP, path[0], 0, GlobalSettings::SkirtSpeed.Get());
         }
 
         prog.CompleteStepPart();
@@ -1587,7 +1583,6 @@ static void AddRetractedMove(PMCollection<ToolSegment> &toolSegments,
 // return true if closer distance than the parameter
 static bool FindClosestPoint(const Path &outPath, const IntPoint &lastPoint, std::size_t &closestPoint, std::size_t &closestDist)
 {
-    //std::size_t clos = SquaredDist(lastPoint, outPath[0]);
     std::size_t upIdx = outPath.size() - 1;
     std::size_t lowIdx = 0;
     std::size_t midIdx = 0;
@@ -1604,7 +1599,6 @@ static bool FindClosestPoint(const Path &outPath, const IntPoint &lastPoint, std
             break;
         }
 
-        //if (clos < SquaredDist(lastPoint, outPath[midIdx]))
         if (SquaredDist(lastPoint, outPath[lowIdx]) < SquaredDist(lastPoint, outPath[midIdx]))
             upIdx = midIdx;
         else

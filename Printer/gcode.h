@@ -165,14 +165,16 @@ public:
         fields |= 64;
     }
 
+    // Feedrates are in mm/minute for gcode but mm/sec for the rest
+    // so a conversion is done
     bool hasF() {
         return ((fields & 256) != 0);
     }
     float getF() {
-        return f;
+        return f / 60.0f;
     }
     void setF(float value) {
-        f = value;
+        f = value * 60.0f;
         fields |= 256;
     }
 

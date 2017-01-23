@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <cmath>
+#include <iostream>
 
 #include "clipper.hpp"
 #include "pmvector.h"
@@ -145,8 +146,8 @@ public:
         double z = (double)(p2.Z - p1.Z) / scaleFactor;
         double dist = std::sqrt(x*x + y*y + z*z);
 
-        // TODO: Feedrate per minute...
-        return dist * 6000 / speed;
+        // Speed in mm/sec
+        return std::round(dist * 1000 / speed);
     }
 
     ~MovingSegment() {
@@ -241,8 +242,8 @@ struct LayerComponent
     std::vector<TrigLineSegment> initialLineList;
     std::map<std::size_t, std::size_t> faceToLineIdxs;
     std::vector<LayerIsland> islandList;
-    int layerSpeed = 100; // TODO
-    int moveSpeed = 100; // TODO
+    int layerSpeed = GlobalSettings::PrintSpeed.Get(); // TODO
+    int moveSpeed = GlobalSettings::TravelSpeed.Get(); // TODO
     std::vector<TravelSegment> initialLayerMoves;
 
     bool hasSkirt = false;
