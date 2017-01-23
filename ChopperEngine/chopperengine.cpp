@@ -28,7 +28,7 @@ void ChopperEngine::SlicerLog(std::string message)
     if (slicerLogger != nullptr)
         slicerLogger(message);
 
-    std::cout << message << std::endl;
+    //std::cout << message << std::endl;
 }
 
 static inline void getTrigPointFloats(Triangle &trig, double *arr, uint8_t pnt, MeshInfoPtr mip)

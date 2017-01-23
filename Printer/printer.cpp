@@ -21,6 +21,8 @@ static volatile bool NeedTemp = false;
 static volatile bool CheckTemp = true;
 static std::ofstream *fanGPIO = nullptr;
 
+#define SIMULATE_PRINT
+
 static void CheckTempLoop()
 {
     while (CheckTemp)
@@ -39,6 +41,7 @@ static void CheckTempLoop()
 
 Printer::Printer(QObject *parent) : QObject(parent)
 {
+#ifndef SIMULATE_PRINT
     // Set the fan gpio to output
     std::ofstream dir("/sys/class/gpio/gpio146/direction");
     if (!dir) {
@@ -58,6 +61,7 @@ Printer::Printer(QObject *parent) : QObject(parent)
         else
             *fanGPIO << "0";
     }
+#endif
 }
 
 Printer::~Printer()
@@ -84,6 +88,7 @@ Printer::~Printer()
 // This has to be called from the main thread
 void Printer::Connect()
 {
+#ifndef SIMULATE_PRINT
     serial = new QSerialPort("ttyAMA0");
     serial->setBaudRate(57600);
 
@@ -100,6 +105,7 @@ void Printer::Connect()
     }
     else
         qDebug() << "Couldn't open serial";
+#endif
 }
 
 void Printer::readPrinterOutput()
@@ -134,6 +140,7 @@ void Printer::printerFinished()
 
 void Printer::sendCommand(QString cmd)
 {
+#ifndef SIMULATE_PRINT
     if (serial != nullptr && serial->isOpen())
     {
         serial->write((cmd + '\n').toUtf8());
@@ -142,6 +149,9 @@ void Printer::sendCommand(QString cmd)
     }
     else
         std::cout << "Serial port not open for sending" << std::endl;
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+#endif
 }
 
 static inline void WaitForOk()
@@ -169,13 +179,17 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
 {
     ChopperEngine::LineWriter lw(_mip);
 
-    // TODO:
-    // implement partial render and eta
+    m_totalTime = _mip->totalMillis;
+    m_timeLeft = m_totalTime;
+    if (m_totalTime == -1)
+        std::cout << "ERROR: mesh totalMillis not set" << std::endl;
 
     int64_t lineNum = 0;
     while (lw.HasLineToRead() && !StopPrintThread)
     {
+#ifndef SIMULATE_PRINT
         if (serial != nullptr )//&& serial->isOpen())
+#endif
         {
             GCode line = lw.ReadNextLine();
             lineNum++;
@@ -195,7 +209,7 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
                 else if (line.getM() == 107)
                     GlobalPrinter.setFanning(false);
             }
-
+#ifndef SIMULATE_PRINT
             if (serial->isOpen())
             {
                 serial->write(QString::fromStdString(line.getAscii() + '\n').toUtf8());
@@ -217,6 +231,7 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 std::cout << "Serial not open for printing." << std::endl;
             }
+#endif
 
             // Update the progress indicators
             if (line.hasRenderInfo())
@@ -225,16 +240,21 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
 
                 ToolpathRendering::ShowPrintedToInfo(info);
                 m_timeLeft -= info->milliSecs;
-                emit GlobalPrinter.etaChanged();
-                emit GlobalPrinter.percentDoneChanged();
-                GlobalPrinter.UpdateProgressStatus();
+                QMetaObject::invokeMethod(&GlobalPrinter, "updateEtaAndProgress");
+
+#ifdef SIMULATE_PRINT
+                //std::this_thread::sleep_for(std::chrono::milliseconds(info->milliSecs));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+#endif
             }
         }
+#ifndef SIMULATE_PRINT
         else
         {
             std::cout << "Serial port not open, print stopped" << std::endl;
             goto close;
         }
+#endif
 
         // Stall the thread while pausing but check for a complete stop
         while (GlobalPrinter.paused() && !StopPrintThread)
@@ -246,6 +266,13 @@ static void PrintFile(const ChopperEngine::MeshInfoPtr _mip)
 
     // Stop the heater
     GlobalPrinter.setHeating(false);
+}
+
+void Printer::updateEtaAndProgress()
+{
+    emit etaChanged();
+    emit percentDoneChanged();
+    UpdateProgressStatus();
 }
 
 void Printer::UpdateProgressStatus()

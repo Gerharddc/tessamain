@@ -67,7 +67,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
     ushort lineIdx = 0;
     std::vector<TPDataChunk> *chunks = new std::vector<TPDataChunk>();
     TPDataChunk *dc = nullptr;
-    totalMillis = 0;
+    mip->totalMillis = 0;
 
     // Data for partial rendering
     ushort lastEndIdx = 0;
@@ -111,7 +111,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
 
                     auto millis = ms->calcMillis();
                     info->milliSecs = millis;
-                    totalMillis += millis;
+                    mip->totalMillis += millis;
 
                     if (started)
                         pIsles.back().push_back(InfoPoint(
@@ -140,7 +140,7 @@ std::vector<TPDataChunk>* RenderTP::CalculateDataChunks()
 
                         auto millis = ms->calcMillis();
                         info->milliSecs = millis;
-                        totalMillis += millis;
+                        mip->totalMillis += millis;
                     }
 
                     if (ts->type == ToolSegType::Extruded && info != nullptr)

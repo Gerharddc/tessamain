@@ -98,6 +98,9 @@ signals:
 public slots:
     void readPrinterOutput();
     void printerFinished();
+
+public slots:
+    void updateEtaAndProgress();
 };
 
 extern Printer GlobalPrinter;

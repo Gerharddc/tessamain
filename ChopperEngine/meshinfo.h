@@ -16,6 +16,9 @@ struct MeshInfo
     Mesh* sliceMesh = nullptr;
     LayerComponent* layerComponents = nullptr;
 
+    // ETA gets calculated when data chunks are generated
+    long totalMillis = -1;
+
     MeshInfo(Mesh *inputMesh) {
         sliceMesh = inputMesh;
 

@@ -88,9 +88,6 @@ struct RenderTP
     ChopperEngine::MeshInfoPtr mip;
     std::vector<TPDataChunk> *CalculateDataChunks();
 
-    // ETA gets calculated when data chunks are generated
-    long totalMillis = -1;
-
     RenderTP(ChopperEngine::MeshInfoPtr _mip) {
         mip = _mip;
     }
