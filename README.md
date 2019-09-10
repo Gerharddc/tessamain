@@ -1,4 +1,6 @@
-# simonmain
+# tessamain
+(This is a slighlty newer version of https://github.com/Gerharddc/simonmain)
+
 Embedded touch screen 3D printer main system application as can be seen in https://youtu.be/apeYxR0ags4.
 
 This application is designed to be the main application that runs on a 3D printer with a powerful embedded Linux SBC and a multi-touch touch screen. The application makes use of Qt and a QML interface that includes a custom keyboard.
